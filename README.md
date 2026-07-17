@@ -1,8 +1,11 @@
-# @baryodev/pwa-kit
+<div align="center">
+  <img src="https://raw.githubusercontent.com/BaryoDev/pwa-kit/main/logo.svg" alt="pwa-kit" width="88" height="88" />
+  <h1>@baryodev/pwa-kit</h1>
+  <p><em>Drop-in PWA essentials: an install prompt for Android + iOS, a secure network-first service worker, and helpers.</em></p>
+</div>
 
-Drop-in PWA essentials for any web app: an install prompt that works on **both Android and iOS**,
-a **secure, network-first service worker**, and small helpers. Framework-agnostic (the React
-component uses inline styles, so no CSS setup needed).
+Turn any web app into an installable, offline-capable one. Framework-agnostic (the React component
+uses inline styles, so no CSS setup needed).
 
 ## Why
 
