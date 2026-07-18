@@ -27,3 +27,29 @@ export function isStandalone(): boolean {
     (navigator as unknown as { standalone?: boolean }).standalone === true
   );
 }
+
+/**
+ * When launched as an installed PWA, lock the viewport so pinch- and double-tap-zoom are disabled,
+ * making the app feel native. In a regular browser tab this is a no-op, so accessibility zoom still
+ * works there. Returns a cleanup function that removes the pinch listener (no-op when not standalone
+ * or on the server). Safe to call on the server.
+ */
+export function lockViewportWhenStandalone(): () => void {
+  if (typeof document === "undefined" || !isStandalone()) return () => {};
+
+  let meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.name = "viewport";
+    document.head.appendChild(meta);
+  }
+  meta.content =
+    "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover";
+
+  // Belt-and-suspenders for iOS, which ignores user-scalable=no: block the pinch gesture.
+  const preventPinch = (e: TouchEvent) => {
+    if (e.touches.length > 1) e.preventDefault();
+  };
+  document.addEventListener("touchmove", preventPinch, { passive: false });
+  return () => document.removeEventListener("touchmove", preventPinch);
+}

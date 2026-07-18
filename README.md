@@ -91,7 +91,44 @@ export default function App() {
 - **iOS Safari:** shows **Share → Add to Home Screen** instructions (iOS has no install event).
 - Hidden when already installed; dismissible (remembered in `localStorage`).
 
-## 4. Web manifest (you provide)
+## 4. Native feel when installed (React)
+
+Browsers let users pinch- and double-tap-zoom any page — great for the web, but it makes an
+installed app feel like a website. Mount `StandaloneViewport` once near your root: when the app is
+launched as an installed PWA it locks the viewport so zoom is disabled; in a normal browser tab it
+does nothing, so accessibility zoom still works there.
+
+```tsx
+import { StandaloneViewport } from "@baryodev/pwa-kit";
+
+export default function RootLayout({ children }) {
+  return (
+    <html>
+      <body>
+        {children}
+        <StandaloneViewport />
+      </body>
+    </html>
+  );
+}
+```
+
+Not using React? Call the helper directly (e.g. in a client entry). It's a no-op on the server and
+in a browser tab, and returns a cleanup function:
+
+```ts
+import { lockViewportWhenStandalone } from "@baryodev/pwa-kit";
+
+const cleanup = lockViewportWhenStandalone();
+```
+
+Your base viewport should still allow zoom (so the browser tab stays accessible) — Next.js:
+
+```ts
+export const viewport = { width: "device-width", initialScale: 1 };
+```
+
+## 5. Web manifest (you provide)
 
 pwa-kit doesn't generate your manifest (icons/colors are yours), but it needs one. Minimum:
 
@@ -127,7 +164,9 @@ Link it and the Apple bits in your `<head>` (Next.js: use the metadata API):
 | `registerServiceWorker(url?)` | Registers the worker after `load`. No-op on the server. |
 | `clearApiCache()` | Tells the worker to drop cached API data. Call on sign-in/out. |
 | `isStandalone()` | `true` when running as an installed PWA. |
+| `lockViewportWhenStandalone()` | Disables zoom when installed (no-op in a browser tab). Returns a cleanup fn. |
 | `<InstallHint />` | Dismissible install prompt (Android button / iOS instructions). |
+| `<StandaloneViewport />` | Mounts `lockViewportWhenStandalone` for you. Renders nothing. |
 
 ## License
 
