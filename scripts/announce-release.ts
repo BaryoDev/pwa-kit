@@ -49,11 +49,13 @@ async function gql<T>(query: string, variables: Record<string, unknown>): Promis
 }
 
 async function main(): Promise<void> {
-  const search = await gql<{ search: { nodes: Array<{ title?: string }> } }>(
-    `query($q:String!){ search(type:DISCUSSION, query:$q, first:20){ nodes{ ... on Discussion { title } } } }`,
-    { q: `repo:${REPO_SLUG} in:title "${title}"` },
+  // List the repo's discussions rather than the global search API (a Discussions-only token can't
+  // use search).
+  const existing = await gql<{ repository: { discussions: { nodes: Array<{ title?: string }> } } }>(
+    `query($owner:String!,$name:String!){ repository(owner:$owner, name:$name){ discussions(first:100, orderBy:{field:CREATED_AT, direction:DESC}){ nodes{ title } } } }`,
+    { owner: REPO_SLUG.split("/")[0], name: REPO_SLUG.split("/")[1] },
   );
-  if (search.search.nodes.some((n) => n.title === title)) {
+  if (existing.repository.discussions.nodes.some((n) => n.title === title)) {
     console.log("Already announced:", title);
     return;
   }
