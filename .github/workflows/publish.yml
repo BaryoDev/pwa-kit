@@ -1,7 +1,8 @@
 name: Publish
 
-# Publishes to npmjs (primary, with provenance) and mirrors to GitHub Packages, then announces the
-# release to the BaryoDev org discussions. Trigger by publishing a GitHub Release, or manually.
+# Publishes to npmjs via trusted publishing (OIDC — no NPM_TOKEN, provenance automatic), mirrors to
+# GitHub Packages, then announces the release to the BaryoDev org discussions.
+# Trigger by publishing a GitHub Release, or manually.
 on:
   release:
     types: [published]
@@ -12,27 +13,27 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write # npm provenance
+      id-token: write # OIDC for npm trusted publishing + provenance
       packages: write # lets GITHUB_TOKEN publish to GitHub Packages
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: "https://registry.npmjs.org"
+      # Trusted publishing needs npm >= 11.5.1 (newer than what Node 22 bundles).
+      - run: npm install -g npm@latest
       - run: npm ci
       - run: npm run build
 
-      - name: Publish to npmjs
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish to npmjs (trusted publishing)
+        run: npm publish --access public
 
       # Mirror the same build to GitHub Packages.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           registry-url: "https://npm.pkg.github.com"
           scope: "@baryodev"
       - name: Mirror to GitHub Packages
@@ -41,10 +42,14 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Announce the release
-        if: ${{ secrets.ANNOUNCE_TOKEN != '' }}
         env:
           ANNOUNCE_TOKEN: ${{ secrets.ANNOUNCE_TOKEN }}
           PACKAGE: "@baryodev/pwa-kit"
           VERSION: ${{ github.event.release.tag_name || github.ref_name }}
           NOTES: ${{ github.event.release.body }}
-        run: npx --yes tsx scripts/announce-release.ts
+        run: |
+          if [ -z "$ANNOUNCE_TOKEN" ]; then
+            echo "ANNOUNCE_TOKEN not set — skipping announcement."
+            exit 0
+          fi
+          npx --yes tsx scripts/announce-release.ts
