@@ -41,15 +41,14 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Announce the release
-        env:
-          ANNOUNCE_TOKEN: ${{ secrets.ANNOUNCE_TOKEN }}
-          PACKAGE: "@baryodev/pwa-kit"
-          VERSION: ${{ github.event.release.tag_name || github.ref_name }}
-          NOTES: ${{ github.event.release.body }}
-        run: |
-          if [ -z "$ANNOUNCE_TOKEN" ]; then
-            echo "ANNOUNCE_TOKEN not set — skipping announcement."
-            exit 0
-          fi
-          npx --yes tsx scripts/announce-release.ts
+  # Announce via the org's reusable workflow (single source of truth for all repos).
+  announce:
+    needs: publish
+    uses: BaryoDev/.github/.github/workflows/announce.yml@main
+    with:
+      package: "@baryodev/pwa-kit"
+      version: ${{ github.event.release.tag_name || github.ref_name }}
+      notes: ${{ github.event.release.body }}
+      install: "npm i @baryodev/pwa-kit"
+    secrets:
+      ANNOUNCE_TOKEN: ${{ secrets.ANNOUNCE_TOKEN }}
