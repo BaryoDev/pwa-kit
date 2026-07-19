@@ -1,8 +1,15 @@
 {
   "name": "@baryodev/pwa-kit",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Drop-in PWA kit: install prompt (Android + iOS), a secure network-first service worker, and helpers. Framework-agnostic React.",
-  "keywords": ["pwa", "service-worker", "install", "add-to-home-screen", "offline", "react"],
+  "keywords": [
+    "pwa",
+    "service-worker",
+    "install",
+    "add-to-home-screen",
+    "offline",
+    "react"
+  ],
   "license": "MIT",
   "author": "BaryoDev",
   "homepage": "https://github.com/BaryoDev/pwa-kit",
@@ -21,7 +28,9 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "tsup",
@@ -31,7 +40,9 @@
     "react": ">=17"
   },
   "peerDependenciesMeta": {
-    "react": { "optional": true }
+    "react": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

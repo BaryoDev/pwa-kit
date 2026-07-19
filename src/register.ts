@@ -1,6 +1,27 @@
-/** Register the service worker once the page has loaded. Safe to call on the server (no-op). */
-export function registerServiceWorker(url = "/sw.js"): void {
+/**
+ * Register the service worker once the page has loaded. Safe to call on the server (no-op).
+ *
+ * When a new worker takes control after a deploy, the page reloads once so it runs against the
+ * fresh assets instead of stale cached chunks (a common cause of a blank page or stuck spinner
+ * after shipping). This only happens on an update, never the first install. Pass
+ * `{ reloadOnUpdate: false }` to opt out.
+ */
+export function registerServiceWorker(
+  url = "/sw.js",
+  opts: { reloadOnUpdate?: boolean } = {},
+): void {
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+
+  if (opts.reloadOnUpdate !== false) {
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloading || !hadController) return; // skip the first install (no prior controller)
+      reloading = true;
+      if (typeof window !== "undefined") window.location.reload();
+    });
+  }
+
   const reg = () => {
     navigator.serviceWorker.register(url).catch(() => {});
   };
