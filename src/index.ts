@@ -9,3 +9,5 @@ export {
 } from "./register";
 export { generateServiceWorker } from "./sw-template";
 export type { ServiceWorkerOptions } from "./sw-template";
+export { reportPwaStatus, pwaStatus } from "./pwa-report";
+export type { PwaReport, DisplayMode, ReportPwaOptions } from "./pwa-report";
