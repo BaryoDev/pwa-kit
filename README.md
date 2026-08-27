@@ -128,7 +128,52 @@ Your base viewport should still allow zoom (so the browser tab stays accessible)
 export const viewport = { width: "device-width", initialScale: 1 };
 ```
 
-## 5. Web manifest (you provide)
+## 5. Who installed it (adoption tracking)
+
+There is no cross-browser API that answers "is this PWA installed?" from a normal browser tab.
+`navigator.getInstalledRelatedApps()` is Chromium-only and needs `related_applications` in your
+manifest; iOS has no install API at all. What every platform *can* tell you is whether the current
+launch is the installed app, so record that and keep it.
+
+`reportPwaStatus` fires once on launch, and again if the user installs during the session
+(`appinstalled`). You supply `send`, so the report goes through your own authenticated API:
+
+```ts
+import { reportPwaStatus } from "@baryodev/pwa-kit/report";
+
+reportPwaStatus((report) => api.post("/api/pwa/report", report));
+// report: { deviceId, displayMode, platform, installed }
+```
+
+Want a one-off read instead of a subscription? Use `pwaStatus()`, which returns the same shape (or
+`null` on the server).
+
+**Import from `@baryodev/pwa-kit/report`, not the package root.** The root re-exports the React
+components, so it pulls React in. This subpath carries only the reporting helpers: no dependencies,
+no React, and it builds to a single self-contained file. That means a non-React app, or a site with
+no bundler at all, can use it directly:
+
+```html
+<script type="module">
+  import { reportPwaStatus } from "/js/pwa-kit-report.js"; // copied from dist/report.js
+  reportPwaStatus((r) => fetch("/api/pwa/report", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(r),
+  }));
+</script>
+```
+
+Things to design around:
+
+- `installed` means *currently running as installed*. Someone who installed but is in a browser tab
+  reports `false` on that launch, which is why the server should store the first `true` it sees.
+- `appinstalled` is Chromium-only. On iOS you find out at the next home-screen launch, not at the
+  moment of install.
+- `deviceId` is a random id in `localStorage`, so it is per browser, not per account. Private mode
+  or cleared storage yields a new one and the same person can be counted twice.
+
+## 6. Web manifest (you provide)
 
 pwa-kit doesn't generate your manifest (icons/colors are yours), but it needs one. Minimum:
 
