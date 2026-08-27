@@ -84,8 +84,9 @@ Initial release.
 - `generateServiceWorker`: network-first service worker with cache hygiene.
 - `registerServiceWorker`, `clearApiCache`, `isStandalone`.
 
+Only tagged versions are linked. 0.2.0 and 0.4.0 were published to npm without a tag, so there is
+nothing on GitHub to point at; they are on npm under those versions.
+
 [0.5.0]: https://github.com/BaryoDev/pwa-kit/releases/tag/v0.5.0
-[0.4.0]: https://github.com/BaryoDev/pwa-kit/releases/tag/v0.4.0
 [0.3.0]: https://github.com/BaryoDev/pwa-kit/releases/tag/v0.3.0
-[0.2.0]: https://github.com/BaryoDev/pwa-kit/releases/tag/v0.2.0
 [0.1.0]: https://github.com/BaryoDev/pwa-kit/releases/tag/v0.1.0
