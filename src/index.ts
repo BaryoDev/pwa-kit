@@ -7,6 +7,7 @@ export {
   isStandalone,
   lockViewportWhenStandalone,
 } from "./register";
+export type { RegisterOptions } from "./register";
 export { generateServiceWorker } from "./sw-template";
 export type { ServiceWorkerOptions } from "./sw-template";
 export { reportPwaStatus, pwaStatus } from "./pwa-report";
