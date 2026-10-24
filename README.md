@@ -208,6 +208,80 @@ Link it and the Apple bits in your `<head>` (Next.js: use the metadata API):
 <meta name="apple-mobile-web-app-title" content="MyApp" />
 ```
 
+## 7. Web push (opt-in)
+
+Push is off by default. With it off, the generated worker has no push code.
+
+```ts
+generateServiceWorker({ cachePrefix: "myapp", push: true });
+// or, to also accept pushes that carry no payload:
+generateServiceWorker({ cachePrefix: "myapp", push: { fetchUrl: "/api/push/latest" } });
+```
+
+The worker then handles `push` and `notificationclick`. A push payload is JSON:
+`{ "title": "...", "body": "...", "url": "/inbox", "tag": "..." }`. Only `title` is required.
+Clicking a notification closes it, then focuses an open window in the worker's scope (navigating
+it to `url` if given) or opens `url`. A `url` on another origin is ignored and the app root is
+used. A push with missing or bad data shows nothing.
+
+**Subscribe from the client**
+
+```ts
+import { pushSupport, subscribePush, unsubscribePush } from "@baryodev/pwa-kit/push";
+
+const support = pushSupport();
+if (!support.ok) {
+  // support.reason: "unsupported" | "ios-not-installed" | "denied"
+}
+
+// In a click handler, never on load:
+const subscription = await subscribePush(VAPID_PUBLIC_KEY);
+await fetch("/api/push/subscribe", { method: "POST", body: JSON.stringify(subscription) });
+```
+
+`subscribePush` asks for permission, subscribes with `userVisibleOnly: true`, returns the
+subscription JSON for your server, and reuses an existing subscription. `unsubscribePush()` removes
+it. On iOS 16.4+ push only works for apps installed to the home screen, so `pushSupport()` reports
+`ios-not-installed` in a Safari tab.
+
+**When to ask.** Ask after a moment the user cares about (they placed an order, followed a thread),
+from a button they pressed. Never on first load. A permission prompt that is denied is hard to
+undo, and most browsers stop showing it.
+
+**Sending stays with your app.** pwa-kit has no push server. You store the subscriptions and send
+with your own VAPID keys (generate a pair with `npx web-push generate-vapid-keys`). A Cloudflare
+Worker sketch using the `@block65/webcrypto-web-push` package:
+
+```ts
+import { buildPushPayload } from "@block65/webcrypto-web-push";
+
+export default {
+  async fetch(req: Request, env: Env) {
+    const { subscription, message } = await req.json(); // subscription from subscribePush()
+    const vapid = {
+      subject: "mailto:you@example.com",
+      publicKey: env.VAPID_PUBLIC_KEY,
+      privateKey: env.VAPID_PRIVATE_KEY,
+    };
+    const payload = await buildPushPayload(
+      { data: JSON.stringify(message) }, // { title, body, url, tag }
+      subscription,
+      vapid,
+    );
+    const res = await fetch(subscription.endpoint, payload);
+    return new Response(null, { status: res.ok ? 204 : 502 });
+  },
+};
+```
+
+Treat a 404 or 410 from the push service as "subscription gone" and delete it.
+
+**Payload-free push.** Encrypting a payload needs a library like the one above. If you would rather
+send an empty push, set `push: { fetchUrl }`. The worker fetches that same-origin URL (same-origin
+credentials, no cache) and shows the JSON it returns, so your server decides the message when the
+device wakes up. The empty push still needs a VAPID `Authorization` header; the payload is the only
+part you skip.
+
 ## API
 
 | Export | Description |
@@ -218,6 +292,7 @@ Link it and the Apple bits in your `<head>` (Next.js: use the metadata API):
 | `isStandalone()` | `true` when running as an installed PWA. |
 | `lockViewportWhenStandalone()` | Disables zoom when installed (no-op in a browser tab). Returns a cleanup fn. |
 | `<InstallHint />` | Dismissible install prompt (Android button / iOS instructions). |
+| `pushSupport()`, `subscribePush(key)`, `unsubscribePush()` | Opt-in web push helpers. Also at `@baryodev/pwa-kit/push`. |
 | `<StandaloneViewport />` | Mounts `lockViewportWhenStandalone` for you. Renders nothing. |
 
 ## License
