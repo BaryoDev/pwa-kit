@@ -80,7 +80,7 @@ self.addEventListener("fetch", (event) => {
           return resp;
         })
         .catch(() =>
-          caches.match(req).then(
+          caches.open(API).then((c) => c.match(req)).then(
             (cached) =>
               cached ||
               new Response(JSON.stringify({ offline: true }), {
@@ -103,13 +103,15 @@ self.addEventListener("fetch", (event) => {
           }
           return resp;
         })
-        .catch(() => caches.match(req).then((r) => r || caches.match(NAV_FALLBACK))),
+        .catch(() =>
+          caches.open(SHELL).then((c) => c.match(req).then((r) => r || c.match(NAV_FALLBACK))),
+        ),
     );
     return;
   }
 
   event.respondWith(
-    caches.match(req).then(
+    caches.open(SHELL).then((c) => c.match(req)).then(
       (cached) =>
         cached ||
         fetch(req).then((resp) => {

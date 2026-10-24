@@ -198,3 +198,47 @@ describe("generated worker: activate purge is scoped to the app prefix", () => {
     expect((await w.caches.keys()).sort()).toEqual(["app-admin-api-v0", "app-admin-shell-v0", "application-x", "app-shell-v1", "my-fonts", "unrelated"].sort());
   });
 });
+
+describe("generated worker: fallbacks read only this worker's caches", () => {
+  const foreign = async (w: ReturnType<typeof loadWorker>, name: string, path: string) =>
+    (await w.caches.open(name)).put(request(path), basic("foreign"));
+
+  it("does not serve an API entry from another app's cache", async () => {
+    const w = loadWorker(opts);
+    await foreign(w, "other-api-v1", "/api/items");
+    w.offline();
+    const resp = (await w.fetch(request("/api/items"))) as FakeResponse;
+    expect(resp.status).toBe(503);
+  });
+
+  it("does not serve an API entry from an old version's cache", async () => {
+    const w = loadWorker(opts);
+    await foreign(w, "app-api-v0", "/api/items");
+    w.offline();
+    expect(((await w.fetch(request("/api/items"))) as FakeResponse).status).toBe(503);
+  });
+
+  it("does not serve a navigation or the fallback page from a foreign cache", async () => {
+    const w = loadWorker(opts);
+    await foreign(w, "other-shell-v1", "/page");
+    await foreign(w, "other-shell-v1", "/");
+    w.offline();
+    const resp = await w.fetch(request("/page", { mode: "navigate" }));
+    expect(resp).toBeUndefined();
+  });
+
+  it("does not serve an asset from a foreign cache", async () => {
+    const w = loadWorker(opts);
+    await foreign(w, "other-shell-v1", "/app.js");
+    w.setNetwork(async () => basic("mine"));
+    expect(((await w.fetch(request("/app.js"))) as FakeResponse).body).toBe("mine");
+  });
+
+  it("still serves the fallback page from its own shell cache", async () => {
+    const w = loadWorker(opts);
+    w.setNetwork(async () => basic("home"));
+    await w.fetch(request("/"));
+    w.offline();
+    expect(((await w.fetch(request("/x", { mode: "navigate" }))) as FakeResponse).body).toBe("home");
+  });
+});
