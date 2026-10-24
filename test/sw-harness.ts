@@ -95,6 +95,27 @@ class FakeCacheStorage {
   }
 }
 
+export interface FakeWindow {
+  url: string;
+  focused: boolean;
+  navigatedTo?: string;
+  focus(): Promise<FakeWindow>;
+  navigate(url: string): Promise<FakeWindow>;
+}
+
+export const fakeWindow = (url: string): FakeWindow => ({
+  url,
+  focused: false,
+  async focus() {
+    this.focused = true;
+    return this;
+  },
+  async navigate(to: string) {
+    this.navigatedTo = to;
+    return this;
+  },
+});
+
 type Handler = (event: any) => void;
 type Network = (req: FakeRequest) => Promise<FakeResponse>;
 
@@ -106,7 +127,13 @@ export function loadWorker(opts: ServiceWorkerOptions) {
   const handlers: Record<string, Handler> = {};
   const caches = new FakeCacheStorage();
   const fetched: string[] = [];
+  const fetchInits: unknown[] = [];
+  const shown: { title: string; options: any }[] = [];
+  const opened: string[] = [];
   const state = {
+    /** Open windows the fake clients API reports. */
+    windows: [] as FakeWindow[],
+    showFails: false,
     network: (async () => basic("ok")) as Network,
     skipWaiting: 0,
     claimed: 0,
@@ -120,14 +147,29 @@ export function loadWorker(opts: ServiceWorkerOptions) {
     skipWaiting: () => {
       state.skipWaiting++;
     },
+    registration: {
+      scope: ORIGIN + "/",
+      showNotification: async (title: string, options: any) => {
+        if (state.showFails) throw new Error("showNotification failed");
+        shown.push({ title, options });
+      },
+    },
     clients: {
       claim: async () => {
         state.claimed++;
       },
+      matchAll: async () => state.windows,
+      openWindow: async (url: string) => {
+        opened.push(url);
+        return undefined;
+      },
     },
   };
-  const fakeFetch = (req: FakeRequest) => {
+  // The worker passes a Request to fetch, or a URL string and an init (the push fetch).
+  const fakeFetch = (input: FakeRequest | string, init?: unknown) => {
+    const req = typeof input === "string" ? request(input) : input;
     fetched.push(req.url);
+    if (init) fetchInits.push(init);
     return state.network(req);
   };
 
@@ -151,6 +193,12 @@ export function loadWorker(opts: ServiceWorkerOptions) {
   return {
     caches,
     fetched,
+    /** The init objects passed to fetch by the worker (only calls that gave one). */
+    fetchInits,
+    /** Notifications the worker showed. */
+    shown,
+    /** URLs the worker opened in a new window. */
+    opened,
     /** How many waitUntil promises the last fetch event registered. */
     get lastWaits() {
       return lastWaits;
@@ -171,6 +219,22 @@ export function loadWorker(opts: ServiceWorkerOptions) {
     },
     activate: () => lifecycle("activate"),
     message: (data: unknown) => lifecycle("message", { data }),
+    /** Dispatch a push event. Pass a payload object, a raw string (e.g. bad JSON), or nothing. */
+    push: (payload?: unknown) =>
+      lifecycle("push", {
+        data:
+          payload === undefined
+            ? null
+            : { json: () => (typeof payload === "string" ? JSON.parse(payload) : payload) },
+      }),
+    /** Dispatch a notificationclick for a notification carrying this data. Returns whether it closed. */
+    async click(data: unknown) {
+      let closed = false;
+      await lifecycle("notificationclick", {
+        notification: { data, close: () => (closed = true) },
+      });
+      return closed;
+    },
     /**
      * Dispatch a fetch event. Returns the response the worker produced, or "passthrough" when it
      * did not call respondWith (the browser would handle the request itself).
