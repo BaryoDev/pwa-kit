@@ -18,6 +18,41 @@ Publishing the Release is what ships it: `.github/workflows/publish.yml` fires o
 Release body as the notes. A `workflow_dispatch` run publishes without any of that paperwork, which
 is how 0.4.0 shipped with no tag, no Release and no announcement.
 
+## [0.6.0] - 2026-10-24
+
+### Added
+
+- Update checks on open and resume (#7). `registerServiceWorker` registers with
+  `updateViaCache: "none"` and calls `update()` after register and whenever the page becomes
+  visible, at most once per `updateIntervalMs` (default 60000).
+- `onUpdate(reload)` option: called instead of reloading when a new worker takes over, so the app
+  can reload between tasks. `reload` runs once. `onUpdate` also works with `reloadOnUpdate: false`.
+- `registerServiceWorker` returns a function that removes its listeners.
+- Opt-in web push (#8). `generateServiceWorker({ push: true })` or `{ push: { fetchUrl } }` adds
+  `push` and `notificationclick` handlers. Click targets and `fetchUrl` stay same-origin. With push
+  off the worker is byte for byte the 0.5.1 output.
+- `@baryodev/pwa-kit/push` with `pushSupport`, `subscribePush` and `unsubscribePush`.
+  `subscribePush` checks the VAPID key and the worker before asking permission, and replaces a
+  subscription made with a different key.
+- `@baryodev/pwa-kit/install` with `installState`, `promptInstall` and `onInstallStateChange`, for
+  your own install button without React (#9). The state is shared with the root entry.
+
+### Changed
+
+- `InstallHint` is built on the install helper. It now hides in in-app browsers (Facebook,
+  Messenger, Instagram and others), where Add to Home Screen does not work, and keeps the Install
+  button for a retry when the browser refuses the prompt.
+- Pages now ask for a new worker on load and resume, including callers that pass
+  `reloadOnUpdate: false`.
+- Tests: 131, up from 51.
+
+### Upgrading
+
+- The worker file must change on every deploy for the update check to find it. Pass a per-deploy
+  `version` (a git sha or build id) to `generateServiceWorker`. See "Updates" in the README.
+- From 0.5.0: caches left by another worker or an older prefix are no longer deleted by activate.
+  Remove them once by hand if you had any. See "Cache cleanup" in the README.
+
 ## [0.5.1] - 2026-10-24
 
 ### Fixed
