@@ -12,6 +12,9 @@ interface Env {
   existing?: unknown;
   noPushManager?: boolean;
   noServiceWorker?: boolean;
+  /** A service worker API exists but nothing is registered. */
+  noRegistration?: boolean;
+  maxTouchPoints?: number;
 }
 
 function stub(env: Env = {}) {
@@ -24,7 +27,14 @@ function stub(env: Env = {}) {
     subscribe: vi.fn(async (_o: unknown) => sub),
   };
   const nav: Record<string, unknown> = { userAgent: env.ua ?? ANDROID };
-  if (!env.noServiceWorker) nav.serviceWorker = { ready: Promise.resolve({ pushManager }) };
+  if (env.maxTouchPoints !== undefined) nav.maxTouchPoints = env.maxTouchPoints;
+  // With nothing registered, the real `ready` never settles.
+  if (!env.noServiceWorker) {
+    nav.serviceWorker = {
+      ready: env.noRegistration ? new Promise(() => {}) : Promise.resolve({ pushManager }),
+      getRegistration: vi.fn(async () => (env.noRegistration ? undefined : { pushManager })),
+    };
+  }
   if (env.standalone) nav.standalone = true;
   const win: Record<string, unknown> = { matchMedia: () => ({ matches: false }) };
   if (!env.noPushManager) win.PushManager = class {};
@@ -34,6 +44,12 @@ function stub(env: Env = {}) {
   vi.stubGlobal("Notification", { permission: env.permission ?? "default", requestPermission });
   return { pushManager, sub, requestPermission };
 }
+
+const existingSub = (key: Uint8Array | null, endpoint = "https://push.test/old") => ({
+  options: { applicationServerKey: key ? key.buffer.slice(key.byteOffset, key.byteOffset + key.byteLength) : null },
+  toJSON: () => ({ endpoint }),
+  unsubscribe: vi.fn(async () => true),
+});
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -68,6 +84,20 @@ describe("pushSupport", () => {
     expect(pushSupport()).toEqual({ ok: true });
   });
 
+  it("treats a Mac user agent with a touch screen as iPadOS", () => {
+    const MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
+    stub({ ua: MAC, maxTouchPoints: 5 });
+    expect(pushSupport()).toEqual({ ok: false, reason: "ios-not-installed" });
+    stub({ ua: MAC, maxTouchPoints: 5, standalone: true });
+    expect(pushSupport()).toEqual({ ok: true });
+  });
+
+  it("does not treat a real Mac as iOS", () => {
+    const MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15";
+    stub({ ua: MAC, maxTouchPoints: 0 });
+    expect(pushSupport()).toEqual({ ok: true });
+  });
+
   it("says denied when permission is denied", () => {
     stub({ permission: "denied" });
     expect(pushSupport()).toEqual({ ok: false, reason: "denied" });
@@ -95,11 +125,45 @@ describe("subscribePush", () => {
     expect(json).toEqual({ endpoint: "https://push.test/e", keys: { p256dh: "a", auth: "b" } });
   });
 
-  it("reuses an existing subscription", async () => {
-    const existing = { toJSON: () => ({ endpoint: "https://push.test/old" }) };
+  it("reuses an existing subscription made with the same key", async () => {
+    const existing = existingSub(bytes);
     const { pushManager } = stub({ existing });
     expect(await subscribePush(key)).toEqual({ endpoint: "https://push.test/old" });
     expect(pushManager.subscribe).not.toHaveBeenCalled();
+    expect(existing.unsubscribe).not.toHaveBeenCalled();
+  });
+
+  it("replaces an existing subscription made with a different key", async () => {
+    const other = Uint8Array.from(bytes, (b) => b ^ 1);
+    const existing = existingSub(other);
+    const { pushManager } = stub({ existing });
+    const json = await subscribePush(key);
+    expect(existing.unsubscribe).toHaveBeenCalledOnce();
+    expect(pushManager.subscribe).toHaveBeenCalledOnce();
+    expect(json.endpoint).toBe("https://push.test/e");
+  });
+
+  it("replaces an existing subscription that reports no key", async () => {
+    const existing = existingSub(null);
+    const { pushManager } = stub({ existing });
+    await subscribePush(key);
+    expect(existing.unsubscribe).toHaveBeenCalledOnce();
+    expect(pushManager.subscribe).toHaveBeenCalledOnce();
+  });
+
+  it("throws on a bad key before prompting", async () => {
+    const { requestPermission, pushManager } = stub();
+    for (const bad of ["", "not a key!", btoa("short"), key.slice(0, -4)]) {
+      await expect(subscribePush(bad)).rejects.toThrow(/invalid VAPID public key/);
+    }
+    expect(requestPermission).not.toHaveBeenCalled();
+    expect(pushManager.subscribe).not.toHaveBeenCalled();
+  });
+
+  it("throws before prompting when no service worker is registered", async () => {
+    const { requestPermission } = stub({ noRegistration: true });
+    await expect(subscribePush(key)).rejects.toThrow("push unavailable: no service worker");
+    expect(requestPermission).not.toHaveBeenCalled();
   });
 
   it("throws when permission is not granted, without subscribing", async () => {
@@ -125,6 +189,11 @@ describe("unsubscribePush", () => {
 
   it("returns false when there is no subscription", async () => {
     stub();
+    expect(await unsubscribePush()).toBe(false);
+  });
+
+  it("returns false, without hanging, when no service worker is registered", async () => {
+    stub({ noRegistration: true });
     expect(await unsubscribePush()).toBe(false);
   });
 
