@@ -15,7 +15,7 @@
   "homepage": "https://github.com/BaryoDev/pwa-kit",
   "repository": {
     "type": "git",
-    "url": "https://github.com/BaryoDev/pwa-kit.git"
+    "url": "git+https://github.com/BaryoDev/pwa-kit.git"
   },
   "type": "module",
   "main": "./dist/index.cjs",
@@ -31,6 +31,16 @@
       "types": "./dist/report.d.ts",
       "import": "./dist/report.js",
       "require": "./dist/report.cjs"
+    },
+    "./push": {
+      "types": "./dist/push.d.ts",
+      "import": "./dist/push.js",
+      "require": "./dist/push.cjs"
+    },
+    "./install": {
+      "types": "./dist/install.d.ts",
+      "import": "./dist/install.js",
+      "require": "./dist/install.cjs"
     }
   },
   "files": [

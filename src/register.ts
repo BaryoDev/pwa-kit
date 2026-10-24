@@ -1,32 +1,100 @@
+export interface RegisterOptions {
+  /** Set to false to not reload when a new worker takes over. Default true. `onUpdate` still wins. */
+  reloadOnUpdate?: boolean;
+  /**
+   * Called instead of reloading when a new worker takes over, even with `reloadOnUpdate: false`.
+   * Call `reload()` when it is safe (a game between runs, a form with no unsaved input). `reload`
+   * only reloads once. Reload soon: until you do, the old page runs on the new worker.
+   */
+  onUpdate?: (reload: () => void) => void;
+  /** Minimum milliseconds between update checks on load and resume. Default 60000. */
+  updateIntervalMs?: number;
+}
+
 /**
  * Register the service worker once the page has loaded. Safe to call on the server (no-op).
  *
+ * The worker file is never served from the HTTP cache (`updateViaCache: "none"`), and the page asks
+ * for a new version after load and whenever it becomes visible again (at most once per
+ * `updateIntervalMs`, default 60 s), so an installed app resumed from the background picks up a deploy.
+ *
  * When a new worker takes control after a deploy, the page reloads once so it runs against the
  * fresh assets instead of stale cached chunks (a common cause of a blank page or stuck spinner
- * after shipping). This only happens on an update, never the first install. Pass
- * `{ reloadOnUpdate: false }` to opt out.
+ * after shipping). This only happens on an update, never the first install. Pass `onUpdate` to
+ * choose the moment yourself, or `{ reloadOnUpdate: false }` to opt out.
+ *
+ * Returns a function that removes the listeners this call added.
  */
-export function registerServiceWorker(
-  url = "/sw.js",
-  opts: { reloadOnUpdate?: boolean } = {},
-): void {
-  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+export function registerServiceWorker(url = "/sw.js", opts: RegisterOptions = {}): () => void {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return () => {};
 
-  if (opts.reloadOnUpdate !== false) {
-    const hadController = !!navigator.serviceWorker.controller;
-    let reloading = false;
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (reloading || !hadController) return; // skip the first install (no prior controller)
-      reloading = true;
+  const cleanups: Array<() => void> = [];
+
+  let stopped = false;
+
+  if (opts.onUpdate || opts.reloadOnUpdate !== false) {
+    let hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    const reload = () => {
+      if (reloaded) return;
+      reloaded = true;
       if (typeof window !== "undefined") window.location.reload();
+    };
+    const onChange = () => {
+      if (!hadController) {
+        // the first install claiming this page; a later deploy is a real update
+        hadController = true;
+        return;
+      }
+      if (opts.onUpdate) opts.onUpdate(reload);
+      else reload();
+    };
+    navigator.serviceWorker.addEventListener("controllerchange", onChange);
+    cleanups.push(() => navigator.serviceWorker.removeEventListener?.("controllerchange", onChange));
+  }
+
+  const interval = opts.updateIntervalMs ?? 60_000;
+  let registration: ServiceWorkerRegistration | undefined;
+  let lastCheck = -Infinity;
+  const check = () => {
+    if (stopped || !registration) return;
+    const now = Date.now();
+    // a clock that moved backwards (now < lastCheck) must not block checks
+    if (now >= lastCheck && now - lastCheck < interval) return;
+    lastCheck = now;
+    Promise.resolve(registration.update()).catch(() => {
+      lastCheck = -Infinity; // let the next resume retry
     });
+  };
+
+  const onVisible = () => {
+    if (document.visibilityState === "visible") check();
+  };
+  if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+    document.addEventListener("visibilitychange", onVisible);
+    cleanups.push(() => document.removeEventListener("visibilitychange", onVisible));
   }
 
   const reg = () => {
-    navigator.serviceWorker.register(url).catch(() => {});
+    navigator.serviceWorker
+      .register(url, { updateViaCache: "none" })
+      .then((r) => {
+        if (stopped) return;
+        registration = r;
+        check();
+      })
+      .catch(() => {});
   };
   if (typeof document !== "undefined" && document.readyState === "complete") reg();
-  else if (typeof window !== "undefined") window.addEventListener("load", reg, { once: true });
+  else if (typeof window !== "undefined") {
+    window.addEventListener("load", reg, { once: true });
+    cleanups.push(() => window.removeEventListener?.("load", reg));
+  }
+
+  return () => {
+    stopped = true;
+    cleanups.forEach((fn) => fn());
+  };
 }
 
 /**

@@ -79,6 +79,46 @@ function onLogin(session) { clearApiCache(); /* store token... */ }
 function onLogout() { clearApiCache(); /* drop token... */ }
 ```
 
+### Updates
+
+The page asks for a new version after load and whenever it becomes visible again (at most once a
+minute, set `updateIntervalMs` to change it). The worker file is registered with
+`updateViaCache: "none"`, so it is never served from the HTTP cache. An installed app resumed from
+the background picks up a deploy without being closed.
+
+By default the page reloads once when the new worker takes over. A reload loses unsaved work, so
+pass `onUpdate` to pick the moment. It receives a `reload` function that reloads once:
+
+```ts
+// a game: wait until between runs
+let pendingReload: (() => void) | null = null;
+registerServiceWorker("/sw.js", { onUpdate: (reload) => (pendingReload = reload) });
+
+function onRunEnd() {
+  pendingReload?.(); // does nothing when no update is waiting
+}
+```
+
+Deferring the reload means the old page runs on the new worker. Chunks it has not loaded yet may 404 after a deploy, so reload soon (between runs, not after an hour). `onUpdate` also works with `reloadOnUpdate: false`.
+
+The browser installs a new worker only when the bytes of `sw.js` change, and the generated worker
+changes only when its `version` option does. **Set `version` to something that changes on every
+deploy** (git sha or build id), or users keep the old build:
+
+```ts
+// scripts/gen-sw.mjs
+import { execSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { generateServiceWorker } from "@baryodev/pwa-kit";
+
+const version = process.env.BUILD_ID ?? execSync("git rev-parse --short HEAD").toString().trim();
+writeFileSync("public/sw.js", generateServiceWorker({ cachePrefix: "myapp", version }));
+```
+
+In a Vite project, run this script as the `prebuild` step so the id is set on every build.
+
+`registerServiceWorker` returns a function that removes its listeners.
+
 ## 3. Install prompt (React)
 
 ```tsx
@@ -97,6 +137,37 @@ export default function App() {
 - **Android/Chrome:** shows an **Install app** button wired to `beforeinstallprompt`.
 - **iOS Safari:** shows **Share → Add to Home Screen** instructions (iOS has no install event).
 - Hidden when already installed; dismissible (remembered in `localStorage`).
+
+### Your own install button (no React)
+
+`@baryodev/pwa-kit/install` has no React import. Import it early, because the browser can fire
+`beforeinstallprompt` before your UI mounts and the module saves it for you.
+
+```js
+import { installState, promptInstall, onInstallStateChange } from "@baryodev/pwa-kit/install";
+
+const button = document.querySelector("#install");
+const sheet = document.querySelector("#ios-sheet"); // your own markup: Share, then Add to Home Screen
+
+function render(state) {
+  button.hidden = state !== "prompt" && state !== "ios-steps";
+}
+
+button.addEventListener("click", async () => {
+  if (installState() === "ios-steps") {
+    sheet.hidden = false; // iOS has no prompt API, so show your own steps
+  } else {
+    await promptInstall(); // "accepted", "dismissed" or "unavailable"
+  }
+});
+
+render(installState());
+onInstallStateChange(render); // fires when the prompt arrives and on appinstalled
+```
+
+States: `installed`, `prompt` (a saved prompt is waiting), `ios-steps`, `unavailable` (in-app web
+views such as Facebook, Messenger and Instagram, browsers with no install path, and the server).
+The saved prompt can be used once. A `promptInstall()` whose user choice never settles stays pending (browser behaviour).
 
 ## 4. Native feel when installed (React)
 
@@ -208,16 +279,95 @@ Link it and the Apple bits in your `<head>` (Next.js: use the metadata API):
 <meta name="apple-mobile-web-app-title" content="MyApp" />
 ```
 
+## 7. Web push (opt-in)
+
+Push is off by default. With it off, the generated worker has no push code.
+
+```ts
+generateServiceWorker({ cachePrefix: "myapp", push: true });
+// or, to also accept pushes that carry no payload:
+generateServiceWorker({ cachePrefix: "myapp", push: { fetchUrl: "/api/push/latest" } });
+```
+
+The worker then handles `push` and `notificationclick`. A push payload is JSON:
+`{ "title": "...", "body": "...", "url": "/inbox", "tag": "..." }`. Only `title` is required.
+Clicking a notification closes it, then focuses an open window in the worker's scope (navigating
+it to `url` if given) or opens `url`. A `url` on another origin is ignored and the app root is
+used.
+
+Always send a `title`, or set `fetchUrl`. A push with missing or bad data shows no notification,
+and Chrome and Edge then show their own generic "this site has been updated in the background"
+notification instead. Repeated misses can cost you the subscription.
+
+**Subscribe from the client**
+
+```ts
+import { pushSupport, subscribePush, unsubscribePush } from "@baryodev/pwa-kit/push";
+
+const support = pushSupport();
+if (!support.ok) {
+  // support.reason: "unsupported" | "ios-not-installed" | "denied"
+}
+
+// In a click handler, never on load:
+const subscription = await subscribePush(VAPID_PUBLIC_KEY);
+await fetch("/api/push/subscribe", { method: "POST", body: JSON.stringify(subscription) });
+```
+
+`subscribePush` asks for permission, subscribes with `userVisibleOnly: true`, returns the
+subscription JSON for your server, and reuses an existing subscription. `unsubscribePush()` removes
+it. On iOS 16.4+ push only works for apps installed to the home screen, so `pushSupport()` reports
+`ios-not-installed` in a Safari tab.
+
+**When to ask.** Ask after a moment the user cares about (they placed an order, followed a thread),
+from a button they pressed. Never on first load. A permission prompt that is denied is hard to
+undo, and most browsers stop showing it.
+
+**Sending stays with your app.** pwa-kit has no push server. You store the subscriptions and send
+with your own VAPID keys (generate a pair with `npx web-push generate-vapid-keys`). A Cloudflare
+Worker sketch using the `@block65/webcrypto-web-push` package:
+
+```ts
+import { buildPushPayload } from "@block65/webcrypto-web-push";
+
+export default {
+  async fetch(req: Request, env: Env) {
+    const { subscription, message } = await req.json(); // subscription from subscribePush()
+    const vapid = {
+      subject: "mailto:you@example.com",
+      publicKey: env.VAPID_PUBLIC_KEY,
+      privateKey: env.VAPID_PRIVATE_KEY,
+    };
+    const payload = await buildPushPayload(
+      { data: JSON.stringify(message) }, // { title, body, url, tag }
+      subscription,
+      vapid,
+    );
+    const res = await fetch(subscription.endpoint, payload);
+    return new Response(null, { status: res.ok ? 204 : 502 });
+  },
+};
+```
+
+Treat a 404 or 410 from the push service as "subscription gone" and delete it.
+
+**Payload-free push.** Encrypting a payload needs a library like the one above. If you would rather
+send an empty push, set `push: { fetchUrl }`. The worker fetches that same-origin URL (same-origin
+credentials, no cache) and shows the JSON it returns, so your server decides the message when the
+device wakes up. The empty push still needs a VAPID `Authorization` header; the payload is the only
+part you skip.
+
 ## API
 
 | Export | Description |
 |--------|-------------|
 | `generateServiceWorker(options)` | Returns the service-worker source as a string. |
-| `registerServiceWorker(url?)` | Registers the worker after `load`. No-op on the server. |
+| `registerServiceWorker(url?, opts?)` | Registers the worker after `load` and checks for updates on load and resume. Options: `reloadOnUpdate`, `onUpdate`, `updateIntervalMs`. Returns a stop function. No-op on the server. |
 | `clearApiCache()` | Tells the worker to drop cached API data. Call on sign-in/out. |
 | `isStandalone()` | `true` when running as an installed PWA. |
 | `lockViewportWhenStandalone()` | Disables zoom when installed (no-op in a browser tab). Returns a cleanup fn. |
 | `<InstallHint />` | Dismissible install prompt (Android button / iOS instructions). |
+| `pushSupport()`, `subscribePush(key)`, `unsubscribePush()` | Opt-in web push helpers. Also at `@baryodev/pwa-kit/push`. |
 | `<StandaloneViewport />` | Mounts `lockViewportWhenStandalone` for you. Renders nothing. |
 
 ## License
