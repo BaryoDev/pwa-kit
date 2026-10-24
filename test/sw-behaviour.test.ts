@@ -261,3 +261,15 @@ describe("generated worker: cache writes are kept alive with waitUntil", () => {
     expect(w.lastWaits).toBe(0);
   });
 });
+
+describe("generated worker: caching clones the response", () => {
+  it("leaves the body readable for the page on API, navigation and asset responses", async () => {
+    const w = loadWorker(opts);
+    w.setNetwork(async () => basic("payload"));
+    for (const req of [request("/api/items"), request("/page", { mode: "navigate" }), request("/app.js")]) {
+      const resp = (await w.fetch(req)) as FakeResponse;
+      expect(resp.bodyUsed).toBe(false);
+      expect(resp.text()).toBe("payload");
+    }
+  });
+});

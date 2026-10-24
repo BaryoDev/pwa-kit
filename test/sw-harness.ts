@@ -24,11 +24,19 @@ export class FakeResponse {
   get ok() {
     return this.status >= 200 && this.status < 300;
   }
+  bodyUsed = false;
   clone() {
+    if (this.bodyUsed) throw new TypeError("Response body is already used");
     return new FakeResponse(this.body, this);
   }
+  /** Reading the body twice fails, as it does on a real Response. */
+  text() {
+    if (this.bodyUsed) throw new TypeError("Response body is already used");
+    this.bodyUsed = true;
+    return this.body;
+  }
   json() {
-    return JSON.parse(this.body);
+    return JSON.parse(this.text());
   }
 }
 
@@ -55,10 +63,14 @@ const keyOf = (req: FakeRequest | string) => (typeof req === "string" ? new URL(
 class FakeCache {
   entries = new Map<string, FakeResponse>();
   async put(req: FakeRequest | string, resp: FakeResponse) {
-    this.entries.set(keyOf(req), resp);
+    // Like the real Cache API, put consumes the body it is given.
+    if (resp.bodyUsed) throw new TypeError("Response body is already used");
+    resp.bodyUsed = true;
+    this.entries.set(keyOf(req), new FakeResponse(resp.body, resp));
   }
   async match(req: FakeRequest | string) {
-    return this.entries.get(keyOf(req));
+    const hit = this.entries.get(keyOf(req));
+    return hit && new FakeResponse(hit.body, hit);
   }
 }
 
