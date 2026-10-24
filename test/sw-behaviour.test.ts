@@ -273,3 +273,21 @@ describe("generated worker: caching clones the response", () => {
     }
   });
 });
+
+describe("generated worker: only same-origin basic responses are cached", () => {
+  it.each(["cors", "opaque"])("does not cache a %s API response", async (type) => {
+    const w = loadWorker(opts);
+    w.setNetwork(async () => new FakeResponse("x", { type }));
+    await w.fetch(request("/api/x"));
+    expect(w.lastWaits).toBe(0);
+    expect((await w.caches.open("app-api-v1")).entries.size).toBe(0);
+  });
+
+  it.each(["cors", "opaque"])("does not cache a %s asset", async (type) => {
+    const w = loadWorker(opts);
+    w.setNetwork(async () => new FakeResponse("x", { type }));
+    await w.fetch(request("/lib.js"));
+    expect(w.lastWaits).toBe(0);
+    expect((await w.caches.open("app-shell-v1")).entries.size).toBe(0);
+  });
+});
