@@ -26,8 +26,10 @@ jobs:
       - run: npm run build
 
   # Branch protection requires a check named build.
+  # A skipped required check counts as passed, so always run and check the result.
   build:
     needs: test
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: echo ok
+      - run: test "${{ needs.test.result }}" = success
