@@ -9,7 +9,7 @@ bumps may carry breaking changes.
 ## How a release is cut
 
 1. Bump `version` in `package.json` and add the section below.
-2. Merge to `main`. CI runs `tsc --noEmit` and `npm run build`.
+2. Merge to `main`. CI runs `npm audit`, `tsc --noEmit`, the tests and `npm run build`.
 3. Publish a **GitHub Release** tagged `vX.Y.Z`, using that section as the body.
 
 Publishing the Release is what ships it: `.github/workflows/publish.yml` fires on
@@ -17,6 +17,32 @@ Publishing the Release is what ships it: `.github/workflows/publish.yml` fires o
 `NPM_TOKEN`), mirrors to GitHub Packages, then announces to the BaryoDev org discussions using the
 Release body as the notes. A `workflow_dispatch` run publishes without any of that paperwork, which
 is how 0.4.0 shipped with no tag, no Release and no announcement.
+
+## [0.5.1] - 2026-10-24
+
+### Fixed
+
+- The generated worker deletes only its own old caches on activate (`${cachePrefix}-shell-*` and
+  `${cachePrefix}-api-*`). It used to delete every other cache on the origin (#2).
+- Navigations are cached only when the response is ok, same-origin and not redirected, so an error
+  page is never saved as the offline copy (#3).
+- Offline fallbacks read only this worker's own caches, never another app's or an old version's.
+- Cache writes are kept alive with `event.waitUntil`, so the browser cannot stop the worker before
+  a write lands.
+
+### Changed
+
+- Tests: vitest suite (51 tests) for the worker, `pwaStatus`, `reportPwaStatus` and
+  `registerServiceWorker`. CI runs tsc and tests on Node 22 and 24; publishing runs them first (#6).
+- CI fails on high severity npm advisories. Dependabot checks npm and GitHub Actions weekly, and
+  the actions are pinned to commit shas.
+- esbuild (dev only, through tsup) is overridden to 0.28.2 for GHSA-g7r4-m6w7-qqqr. The package
+  still has no runtime dependencies.
+
+### Upgrading
+
+Caches left by another worker or an older prefix are no longer deleted by activate. Remove them
+once by hand if you had any. See "Cache cleanup" in the README.
 
 ## [0.5.0] - 2026-08-27
 
