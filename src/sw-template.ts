@@ -97,8 +97,10 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(req)
         .then((resp) => {
-          const copy = resp.clone();
-          caches.open(SHELL).then((c) => c.put(req, copy));
+          if (resp.ok && resp.type === "basic" && !resp.redirected) {
+            const copy = resp.clone();
+            caches.open(SHELL).then((c) => c.put(req, copy));
+          }
           return resp;
         })
         .catch(() => caches.match(req).then((r) => r || caches.match(NAV_FALLBACK))),

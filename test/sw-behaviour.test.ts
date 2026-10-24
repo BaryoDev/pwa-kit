@@ -121,6 +121,44 @@ describe("generated worker: navigations", () => {
   });
 });
 
+describe("generated worker: navigations only cache good responses", () => {
+  const nav = (path = "/page") => request(path, { mode: "navigate" });
+
+  it("returns a 500 to the page but does not cache it, and offline falls back", async () => {
+    const w = loadWorker(opts);
+    w.setNetwork(async () => basic("home"));
+    await w.fetch(request("/"));
+    w.setNetwork(async () => basic("server error", { status: 500 }));
+    const resp = (await w.fetch(nav())) as FakeResponse;
+    expect(resp.status).toBe(500);
+    expect(resp.body).toBe("server error");
+
+    w.offline();
+    expect(((await w.fetch(nav())) as FakeResponse).body).toBe("home");
+  });
+
+  it("does not cache a 404", async () => {
+    const w = loadWorker(opts);
+    w.setNetwork(async () => basic("nope", { status: 404 }));
+    await w.fetch(nav());
+    expect(await w.caches.keys()).toEqual([]);
+  });
+
+  it("does not cache a non-basic response", async () => {
+    const w = loadWorker(opts);
+    w.setNetwork(async () => new FakeResponse("portal", { type: "opaque" }));
+    await w.fetch(nav());
+    expect(await w.caches.keys()).toEqual([]);
+  });
+
+  it("does not cache a redirected response under the original request", async () => {
+    const w = loadWorker(opts);
+    w.setNetwork(async () => basic("landing", { redirected: true }));
+    expect(((await w.fetch(nav("/old"))) as FakeResponse).body).toBe("landing");
+    expect(await w.caches.keys()).toEqual([]);
+  });
+});
+
 describe("generated worker: messages", () => {
   it("clear-api-cache drops the API cache and keeps the shell", async () => {
     const w = loadWorker(opts);

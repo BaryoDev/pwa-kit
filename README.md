@@ -56,7 +56,7 @@ writeFileSync(
 **Security**
 
 - Auth and file paths are never cached.
-- Only same-origin `200` responses are cached.
+- Only same-origin `2xx` responses are cached. A redirected navigation is not cached either.
 - Call `clearApiCache()` on sign-in and sign-out so cached data from one account is never served
   to another on a shared device (see below).
 
