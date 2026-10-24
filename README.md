@@ -65,7 +65,7 @@ writeFileSync(
 On activate the worker deletes only caches named `${cachePrefix}-shell-*` or `${cachePrefix}-api-*`
 that are not the current version. Caches from another worker, or from an older `cachePrefix`, are
 left alone and stay until you remove them once by hand. Two apps on one origin must use prefixes
-where neither starts with the other (`app` and `app-admin` clash, `app` and `admin` do not).
+where neither starts with the other (`app` and `app-api` clash, since `app-api-shell-v1` looks like an `app` cache; `app` and `admin` do not).
 
 ## 2. Register + cache hygiene
 
