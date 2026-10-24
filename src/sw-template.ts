@@ -62,7 +62,7 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const scope = self.registration.scope;
+  const scope = self.registration.scope.endsWith("/") ? self.registration.scope : self.registration.scope + "/";
   const raw = event.notification.data && event.notification.data.url;
   let target = null;
   if (typeof raw === "string") {
@@ -77,10 +77,12 @@ self.addEventListener("notificationclick", (event) => {
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((wins) => {
         const win = wins.find((c) => c.url.startsWith(scope));
-        if (win) {
-          return win.focus().then(() => (target && win.navigate ? win.navigate(target) : undefined));
-        }
-        return self.clients.openWindow(target || scope);
+        const open = () => self.clients.openWindow(target || scope);
+        if (!win) return open();
+        return win
+          .focus()
+          .then(() => (target && win.navigate ? win.navigate(target) : undefined))
+          .catch(open);
       })
       .catch(() => {}),
   );

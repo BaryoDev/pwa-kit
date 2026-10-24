@@ -103,14 +103,20 @@ export interface FakeWindow {
   navigate(url: string): Promise<FakeWindow>;
 }
 
-export const fakeWindow = (url: string): FakeWindow => ({
+/** A fake client window. Set `focusFails` or `navigateFails` to make that call reject. */
+export const fakeWindow = (
+  url: string,
+  fails: { focusFails?: boolean; navigateFails?: boolean } = {},
+): FakeWindow => ({
   url,
   focused: false,
   async focus() {
+    if (fails.focusFails) throw new Error("focus refused");
     this.focused = true;
     return this;
   },
   async navigate(to: string) {
+    if (fails.navigateFails) throw new Error("navigate refused: client is not controlled");
     this.navigatedTo = to;
     return this;
   },
@@ -134,6 +140,8 @@ export function loadWorker(opts: ServiceWorkerOptions) {
     /** Open windows the fake clients API reports. */
     windows: [] as FakeWindow[],
     showFails: false,
+    /** registration.scope as the worker sees it. */
+    scope: ORIGIN + "/",
     network: (async () => basic("ok")) as Network,
     skipWaiting: 0,
     claimed: 0,
@@ -148,7 +156,9 @@ export function loadWorker(opts: ServiceWorkerOptions) {
       state.skipWaiting++;
     },
     registration: {
-      scope: ORIGIN + "/",
+      get scope() {
+        return state.scope;
+      },
       showNotification: async (title: string, options: any) => {
         if (state.showFails) throw new Error("showNotification failed");
         shown.push({ title, options });

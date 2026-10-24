@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { generateServiceWorker } from "../src/sw-template";
 import { basic, fakeWindow, loadWorker, ORIGIN } from "./sw-harness";
@@ -6,11 +7,32 @@ const base = { cachePrefix: "app", version: "v1" };
 const on = { ...base, push: true };
 
 describe("push option off", () => {
-  it("leaves the worker identical and free of push code", () => {
-    const plain = generateServiceWorker(base);
-    expect(generateServiceWorker({ ...base, push: false })).toBe(plain);
-    expect(generateServiceWorker({ ...base, push: undefined })).toBe(plain);
-    expect(plain).not.toMatch(/push|notification/i);
+  // Fixtures are the 0.5.1 output (origin/main before push), so these fail on any drift.
+  const fixture = (name: string) =>
+    readFileSync(new URL(`./fixtures/${name}`, import.meta.url), "utf8");
+  const custom = {
+    cachePrefix: "my-app",
+    version: "b42",
+    apiPrefix: "/v2/",
+    skipPaths: ["/v2/auth/", "/private/"],
+    navigationFallback: "/offline",
+  };
+
+  it("is byte for byte the 0.5.1 worker with default options", () => {
+    const golden = fixture("sw-0.5.1-default.js");
+    expect(generateServiceWorker(base)).toBe(golden);
+    expect(generateServiceWorker({ ...base, push: false })).toBe(golden);
+    expect(generateServiceWorker({ ...base, push: undefined })).toBe(golden);
+  });
+
+  it("is byte for byte the 0.5.1 worker with custom options", () => {
+    const golden = fixture("sw-0.5.1-custom.js");
+    expect(generateServiceWorker(custom)).toBe(golden);
+    expect(generateServiceWorker({ ...custom, push: false })).toBe(golden);
+  });
+
+  it("has no push code", () => {
+    expect(generateServiceWorker(base)).not.toMatch(/push|notification/i);
   });
 
   it("registers no push or click handlers", () => {
@@ -45,6 +67,7 @@ describe("push handler", () => {
     const w = loadWorker(on);
     await w.push({ body: "no title" });
     await w.push({ title: 5 });
+    await w.push({ title: "" });
     await w.push("null");
     await w.push("42");
     expect(w.shown).toEqual([]);
@@ -153,6 +176,38 @@ describe("notificationclick handler", () => {
     w.state.windows = [win];
     await w.click({ url: "https://evil.test/phish" });
     expect(win.navigatedTo).toBe(ORIGIN + "/");
+  });
+
+  it("opens a window when focus rejects", async () => {
+    const w = loadWorker(on);
+    w.state.windows = [fakeWindow(ORIGIN + "/page", { focusFails: true })];
+    await w.click({ url: "/inbox" });
+    expect(w.opened).toEqual([ORIGIN + "/inbox"]);
+  });
+
+  it("opens a window when navigate rejects (uncontrolled client)", async () => {
+    const w = loadWorker(on);
+    const win = fakeWindow(ORIGIN + "/page", { navigateFails: true });
+    w.state.windows = [win];
+    await w.click({ url: "/inbox" });
+    expect(win.focused).toBe(true);
+    expect(w.opened).toEqual([ORIGIN + "/inbox"]);
+  });
+
+  it("does not match a window outside a scope without a trailing slash", async () => {
+    const w = loadWorker(on);
+    w.state.scope = ORIGIN + "/app";
+    const sibling = fakeWindow(ORIGIN + "/app2/page");
+    const inside = fakeWindow(ORIGIN + "/app/page");
+    w.state.windows = [sibling];
+    await w.click({ url: null });
+    expect(sibling.focused).toBe(false);
+    expect(w.opened).toEqual([ORIGIN + "/app/"]);
+
+    w.state.windows = [sibling, inside];
+    await w.click({ url: null });
+    expect(sibling.focused).toBe(false);
+    expect(inside.focused).toBe(true);
   });
 
   it("treats a protocol-relative or script url as cross-origin or unusable", async () => {
