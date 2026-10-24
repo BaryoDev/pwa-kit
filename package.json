@@ -31,6 +31,11 @@
       "types": "./dist/report.d.ts",
       "import": "./dist/report.js",
       "require": "./dist/report.cjs"
+    },
+    "./install": {
+      "types": "./dist/install.d.ts",
+      "import": "./dist/install.js",
+      "require": "./dist/install.cjs"
     }
   },
   "files": [

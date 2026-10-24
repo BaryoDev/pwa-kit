@@ -7,6 +7,8 @@ export {
   isStandalone,
   lockViewportWhenStandalone,
 } from "./register";
+export { installState, promptInstall, onInstallStateChange } from "./install";
+export type { InstallState, InstallOutcome } from "./install";
 export { generateServiceWorker } from "./sw-template";
 export type { ServiceWorkerOptions } from "./sw-template";
 export { reportPwaStatus, pwaStatus } from "./pwa-report";

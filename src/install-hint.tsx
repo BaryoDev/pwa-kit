@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from "react";
-import { isStandalone } from "./register";
+import { installState, onInstallStateChange, promptInstall, type InstallState } from "./install";
 
 export interface InstallHintProps {
   /** App name shown in the prompt and used for the default dismiss key. */
@@ -12,11 +12,6 @@ export interface InstallHintProps {
   accentColor?: string;
   /** localStorage key used to remember dismissal. Defaults to a per-app key. */
   dismissKey?: string;
-}
-
-interface InstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
 const ShareIcon = () => (
@@ -45,7 +40,6 @@ export function InstallHint({
   const key = dismissKey ?? `pwa-install-dismissed:${appName}`;
   const [show, setShow] = useState(false);
   const [ios, setIos] = useState(false);
-  const [deferred, setDeferred] = useState<InstallPromptEvent | null>(null);
 
   useEffect(() => {
     try {
@@ -53,30 +47,19 @@ export function InstallHint({
     } catch {
       /* ignore */
     }
-    if (isStandalone()) return;
 
-    const ua = navigator.userAgent;
-    const isIos =
-      /iphone|ipad|ipod/i.test(ua) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    if (isIos) {
-      setIos(true);
-      setShow(true);
-      return;
-    }
-
-    const onPrompt = (e: Event) => {
-      e.preventDefault();
-      setDeferred(e as InstallPromptEvent);
-      setShow(true);
+    const sync = (state: InstallState) => {
+      if (state === "installed") setShow(false);
+      else if (state === "ios-steps") {
+        setIos(true);
+        setShow(true);
+      } else if (state === "prompt") setShow(true);
     };
-    const onInstalled = () => setShow(false);
-    window.addEventListener("beforeinstallprompt", onPrompt);
-    window.addEventListener("appinstalled", onInstalled);
-    return () => {
-      window.removeEventListener("beforeinstallprompt", onPrompt);
-      window.removeEventListener("appinstalled", onInstalled);
-    };
+    const initial = installState();
+    if (initial === "installed") return;
+    sync(initial);
+    if (initial === "ios-steps") return;
+    return onInstallStateChange(sync);
   }, [key]);
 
   function dismiss() {
@@ -89,9 +72,7 @@ export function InstallHint({
   }
 
   async function install() {
-    if (!deferred) return;
-    await deferred.prompt();
-    await deferred.userChoice;
+    if ((await promptInstall()) === "unavailable") return;
     dismiss();
   }
 
