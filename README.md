@@ -127,7 +127,7 @@ onInstallStateChange(render); // fires when the prompt arrives and on appinstall
 
 States: `installed`, `prompt` (a saved prompt is waiting), `ios-steps`, `unavailable` (in-app web
 views such as Facebook, Messenger and Instagram, browsers with no install path, and the server).
-The saved prompt can be used once.
+The saved prompt can be used once. A `promptInstall()` whose user choice never settles stays pending (browser behaviour).
 
 ## 4. Native feel when installed (React)
 
