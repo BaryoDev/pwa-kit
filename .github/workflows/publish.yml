@@ -25,6 +25,8 @@ jobs:
       # Trusted publishing needs npm >= 11.5.1 (newer than what Node 22 bundles).
       - run: npm install -g npm@latest
       - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
       - run: npm run build
 
       - name: Publish to npmjs (trusted publishing)
