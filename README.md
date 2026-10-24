@@ -222,7 +222,11 @@ The worker then handles `push` and `notificationclick`. A push payload is JSON:
 `{ "title": "...", "body": "...", "url": "/inbox", "tag": "..." }`. Only `title` is required.
 Clicking a notification closes it, then focuses an open window in the worker's scope (navigating
 it to `url` if given) or opens `url`. A `url` on another origin is ignored and the app root is
-used. A push with missing or bad data shows nothing.
+used.
+
+Always send a `title`, or set `fetchUrl`. A push with missing or bad data shows no notification,
+and Chrome and Edge then show their own generic "this site has been updated in the background"
+notification instead. Repeated misses can cost you the subscription.
 
 **Subscribe from the client**
 
