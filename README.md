@@ -99,6 +99,8 @@ function onRunEnd() {
 }
 ```
 
+Deferring the reload means the old page runs on the new worker. Chunks it has not loaded yet may 404 after a deploy, so reload soon (between runs, not after an hour). `onUpdate` also works with `reloadOnUpdate: false`.
+
 The browser installs a new worker only when the bytes of `sw.js` change, and the generated worker
 changes only when its `version` option does. **Set `version` to something that changes on every
 deploy** (git sha or build id), or users keep the old build:
@@ -113,19 +115,7 @@ const version = process.env.BUILD_ID ?? execSync("git rev-parse --short HEAD").t
 writeFileSync("public/sw.js", generateServiceWorker({ cachePrefix: "myapp", version }));
 ```
 
-With Vite, expose the same id to app code with `define`:
-
-```ts
-// vite.config.ts
-import { defineConfig } from "vite";
-import { execSync } from "node:child_process";
-
-const version = process.env.BUILD_ID ?? execSync("git rev-parse --short HEAD").toString().trim();
-
-export default defineConfig({
-  define: { __BUILD_ID__: JSON.stringify(version) },
-});
-```
+In a Vite project, run this script as the `prebuild` step so the id is set on every build.
 
 `registerServiceWorker` returns a function that removes its listeners.
 
