@@ -49,7 +49,8 @@ export const request = (path: string, init: Partial<FakeRequest> = {}): FakeRequ
   ...init,
 });
 
-const keyOf = (req: FakeRequest | string) => (typeof req === "string" ? req : req.url);
+// Like the real Cache API, a string is resolved against the worker location.
+const keyOf = (req: FakeRequest | string) => (typeof req === "string" ? new URL(req, ORIGIN).href : req.url);
 
 class FakeCache {
   entries = new Map<string, FakeResponse>();

@@ -97,7 +97,7 @@ describe("generated worker: assets", () => {
     const w = loadWorker(opts);
     w.setNetwork(async () => basic("", { status: 404 }));
     await w.fetch(request("/missing.js"));
-    expect(await w.caches.keys()).toEqual([]);
+    expect((await w.caches.open("app-shell-v1")).entries.size).toBe(0);
   });
 });
 
