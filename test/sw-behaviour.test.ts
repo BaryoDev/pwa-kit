@@ -149,3 +149,14 @@ describe("generated worker: activate", () => {
     expect(w.state.claimed).toBe(1);
   });
 });
+
+describe("generated worker: activate purge is scoped to the app prefix", () => {
+  it("keeps caches it does not own and deletes its own old ones", async () => {
+    const w = loadWorker({ cachePrefix: "app", version: "v1" });
+    for (const name of ["unrelated", "my-fonts", "application-x", "app-shell-v0", "app-api-v0", "app-shell-v1"]) {
+      await w.caches.open(name);
+    }
+    await w.activate();
+    expect((await w.caches.keys()).sort()).toEqual(["application-x", "app-shell-v1", "my-fonts", "unrelated"].sort());
+  });
+});
