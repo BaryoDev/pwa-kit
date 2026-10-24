@@ -8,30 +8,47 @@ interface InstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 }
 
-let deferred: InstallPromptEvent | null = null;
-let installed = false;
-const listeners = new Set<() => void>();
-
-function emit(): void {
-  for (const cb of [...listeners]) cb();
+interface Shared {
+  deferred: InstallPromptEvent | null;
+  installed: boolean;
+  attached: boolean;
+  listeners: Set<() => void>;
 }
 
-// Attached at import: the browser can fire `beforeinstallprompt` before any component mounts.
-if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+// The root and /install entries are built separately (no shared chunk), so each bundles its own
+// copy of this file. Keeping the state on globalThis makes every copy see the same prompt.
+const KEY = Symbol.for("@baryodev/pwa-kit/install");
+const g = globalThis as unknown as Record<symbol, Shared | undefined>;
+const shared: Shared = (g[KEY] ??= {
+  deferred: null,
+  installed: false,
+  attached: false,
+  listeners: new Set(),
+});
+
+function emit(): void {
+  for (const cb of [...shared.listeners]) cb();
+}
+
+// Attached at import, once per page: the browser can fire `beforeinstallprompt` before any
+// component mounts.
+if (!shared.attached && typeof window !== "undefined" && typeof window.addEventListener === "function") {
+  shared.attached = true;
   window.addEventListener("beforeinstallprompt", (e: Event) => {
     e.preventDefault(); // keep the browser's own banner from showing
-    deferred = e as InstallPromptEvent;
+    shared.deferred = e as InstallPromptEvent;
     emit();
   });
   window.addEventListener("appinstalled", () => {
-    installed = true;
-    deferred = null;
+    shared.installed = true;
+    shared.deferred = null;
     emit();
   });
 }
 
+// Tokens are case-sensitive and bounded so "Headline/1.0" is not read as LINE.
 const WEBVIEW_UA =
-  /FBAN|FBAV|FB_IAB|FBIOS|Instagram|Messenger|Line\/|Snapchat|TikTok|musical_ly|Bytedance|LinkedInApp|Twitter|MicroMessenger|; wv\)/i;
+  /\bFB(?:AN|AV|_IAB|IOS)\b|\bInstagram\b|\bMessenger(?:Lite)?\b|\bLine\/\d|\bSnapchat\b|\bTikTok\b|\bmusical_ly\b|\bBytedanceWebview\b|\bLinkedInApp\b|\bTwitter(?:Android)?\b|\bMicroMessenger\/|; wv\)/;
 
 function isIos(): boolean {
   const ua = navigator.userAgent;
@@ -59,23 +76,31 @@ function isInAppWebview(): boolean {
  */
 export function installState(): InstallState {
   if (typeof window === "undefined" || typeof navigator === "undefined") return "unavailable";
-  if (installed || isStandalone()) return "installed";
+  if (shared.installed || isStandalone()) return "installed";
   if (isInAppWebview()) return "unavailable";
   if (isIos()) return "ios-steps";
-  if (deferred) return "prompt";
+  if (shared.deferred) return "prompt";
   return "unavailable";
 }
 
 /**
  * Show the saved install prompt and resolve with the user's choice. The saved event is used
- * once, so afterwards the state is no longer `prompt`. Resolves `unavailable` when none is saved.
+ * once, so afterwards the state is no longer `prompt`. Resolves `unavailable` when none is saved
+ * or the browser refuses to show it (the event is kept for a retry). A `userChoice` that never
+ * settles leaves the promise pending, which is browser behaviour.
  */
 export async function promptInstall(): Promise<InstallOutcome> {
-  const event = deferred;
+  const event = shared.deferred;
   if (!event) return "unavailable";
-  deferred = null;
+  shared.deferred = null;
   try {
-    await event.prompt();
+    try {
+      await event.prompt();
+    } catch {
+      // No user activation, or the browser refused. Keep the event so a later click can retry.
+      if (!shared.deferred && !shared.installed) shared.deferred = event;
+      return "unavailable";
+    }
     const { outcome } = await event.userChoice;
     return outcome;
   } finally {
@@ -89,8 +114,8 @@ export async function promptInstall(): Promise<InstallOutcome> {
  */
 export function onInstallStateChange(cb: (state: InstallState) => void): () => void {
   const fn = () => cb(installState());
-  listeners.add(fn);
+  shared.listeners.add(fn);
   return () => {
-    listeners.delete(fn);
+    shared.listeners.delete(fn);
   };
 }

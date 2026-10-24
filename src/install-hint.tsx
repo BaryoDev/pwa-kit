@@ -49,7 +49,7 @@ export function InstallHint({
     }
 
     const sync = (state: InstallState) => {
-      if (state === "installed") setShow(false);
+      if (state === "installed" || state === "unavailable") setShow(false);
       else if (state === "ios-steps") {
         setIos(true);
         setShow(true);

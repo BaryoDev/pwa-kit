@@ -38,8 +38,13 @@ async function load() {
   return import("../src/install");
 }
 
-beforeEach(() => vi.unstubAllGlobals());
-afterEach(() => vi.unstubAllGlobals());
+const KEY = Symbol.for("@baryodev/pwa-kit/install");
+const clean = () => {
+  vi.unstubAllGlobals();
+  delete (globalThis as unknown as Record<symbol, unknown>)[KEY];
+};
+beforeEach(clean);
+afterEach(clean);
 
 describe("installState", () => {
   it("is unavailable on the server and does not throw", async () => {
@@ -112,6 +117,13 @@ describe("installState", () => {
     expect((await load()).installState()).toBe("unavailable");
   });
 
+  it("does not read Headline/1.0 as the LINE webview", async () => {
+    const { fire } = stubBrowser({ ua: ANDROID + " Headline/1.0" });
+    const m = await load();
+    fire("beforeinstallprompt", promptEvent("accepted"));
+    expect(m.installState()).toBe("prompt");
+  });
+
   it("is unavailable in an iOS web view with no Safari token", async () => {
     stubBrowser({ ua: IPHONE_WEBVIEW });
     expect((await load()).installState()).toBe("unavailable");
@@ -139,6 +151,28 @@ describe("promptInstall", () => {
     stubBrowser({ ua: ANDROID });
     const m = await load();
     expect(await m.promptInstall()).toBe("unavailable");
+  });
+
+  it("resolves unavailable and keeps the event when prompt() rejects", async () => {
+    const { fire } = stubBrowser({ ua: ANDROID });
+    const m = await load();
+    const e = promptEvent("accepted");
+    e.prompt.mockRejectedValueOnce(new Error("needs user activation"));
+    fire("beforeinstallprompt", e);
+    expect(await m.promptInstall()).toBe("unavailable");
+    expect(m.installState()).toBe("prompt");
+    expect(await m.promptInstall()).toBe("accepted");
+  });
+
+  it("notifies listeners after promptInstall resolves", async () => {
+    const { fire } = stubBrowser({ ua: ANDROID });
+    const m = await load();
+    fire("beforeinstallprompt", promptEvent("dismissed"));
+    const cb = vi.fn();
+    m.onInstallStateChange(cb);
+    await m.promptInstall();
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect(cb).toHaveBeenCalledWith("unavailable");
   });
 
   it("uses the event once and clears it", async () => {
@@ -170,6 +204,24 @@ describe("onInstallStateChange", () => {
     m.onInstallStateChange(cb);
     fire("appinstalled");
     expect(cb).toHaveBeenCalledWith("installed");
+  });
+
+  it("is shared by two bundled copies of the module", async () => {
+    const { fire, listeners } = stubBrowser({ ua: ANDROID });
+    const a = await load();
+    const b = await load(); // resetModules without clearing the global: a second bundle copy
+    expect(listeners["beforeinstallprompt"]).toHaveLength(1);
+    const cbB = vi.fn();
+    b.onInstallStateChange(cbB);
+    const e = promptEvent("accepted");
+    fire("beforeinstallprompt", e);
+    expect(a.installState()).toBe("prompt");
+    expect(b.installState()).toBe("prompt");
+    expect(await a.promptInstall()).toBe("accepted");
+    expect(b.installState()).not.toBe("prompt");
+    expect(await b.promptInstall()).toBe("unavailable");
+    expect(e.prompt).toHaveBeenCalledTimes(1);
+    expect(cbB).toHaveBeenLastCalledWith("unavailable");
   });
 
   it("stops firing after unsubscribe", async () => {
