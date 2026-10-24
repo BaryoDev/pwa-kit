@@ -138,6 +138,37 @@ export default function App() {
 - **iOS Safari:** shows **Share → Add to Home Screen** instructions (iOS has no install event).
 - Hidden when already installed; dismissible (remembered in `localStorage`).
 
+### Your own install button (no React)
+
+`@baryodev/pwa-kit/install` has no React import. Import it early, because the browser can fire
+`beforeinstallprompt` before your UI mounts and the module saves it for you.
+
+```js
+import { installState, promptInstall, onInstallStateChange } from "@baryodev/pwa-kit/install";
+
+const button = document.querySelector("#install");
+const sheet = document.querySelector("#ios-sheet"); // your own markup: Share, then Add to Home Screen
+
+function render(state) {
+  button.hidden = state !== "prompt" && state !== "ios-steps";
+}
+
+button.addEventListener("click", async () => {
+  if (installState() === "ios-steps") {
+    sheet.hidden = false; // iOS has no prompt API, so show your own steps
+  } else {
+    await promptInstall(); // "accepted", "dismissed" or "unavailable"
+  }
+});
+
+render(installState());
+onInstallStateChange(render); // fires when the prompt arrives and on appinstalled
+```
+
+States: `installed`, `prompt` (a saved prompt is waiting), `ios-steps`, `unavailable` (in-app web
+views such as Facebook, Messenger and Instagram, browsers with no install path, and the server).
+The saved prompt can be used once. A `promptInstall()` whose user choice never settles stays pending (browser behaviour).
+
 ## 4. Native feel when installed (React)
 
 Browsers let users pinch- and double-tap-zoom any page — great for the web, but it makes an

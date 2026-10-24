@@ -36,6 +36,11 @@
       "types": "./dist/push.d.ts",
       "import": "./dist/push.js",
       "require": "./dist/push.cjs"
+    },
+    "./install": {
+      "types": "./dist/install.d.ts",
+      "import": "./dist/install.js",
+      "require": "./dist/install.cjs"
     }
   },
   "files": [
