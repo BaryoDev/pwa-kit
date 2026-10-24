@@ -31,6 +31,11 @@
       "types": "./dist/report.d.ts",
       "import": "./dist/report.js",
       "require": "./dist/report.cjs"
+    },
+    "./push": {
+      "types": "./dist/push.d.ts",
+      "import": "./dist/push.js",
+      "require": "./dist/push.cjs"
     }
   },
   "files": [
