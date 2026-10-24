@@ -291,3 +291,14 @@ describe("generated worker: only same-origin basic responses are cached", () => 
     expect((await w.caches.open("app-shell-v1")).entries.size).toBe(0);
   });
 });
+
+describe("generated worker: redirected navigations", () => {
+  it("does not cache an opaqueredirect navigation (redirect mode is manual)", async () => {
+    const w = loadWorker(opts);
+    // A real one has status 0; 200 here makes the type check the only thing that can stop it.
+    w.setNetwork(async () => new FakeResponse("", { type: "opaqueredirect", status: 200 }));
+    await w.fetch(request("/old", { mode: "navigate" }));
+    expect(w.lastWaits).toBe(0);
+    expect(await w.caches.keys()).toEqual([]);
+  });
+});
