@@ -15,7 +15,7 @@
   "homepage": "https://github.com/BaryoDev/pwa-kit",
   "repository": {
     "type": "git",
-    "url": "https://github.com/BaryoDev/pwa-kit.git"
+    "url": "git+https://github.com/BaryoDev/pwa-kit.git"
   },
   "type": "module",
   "main": "./dist/index.cjs",
