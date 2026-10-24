@@ -75,7 +75,7 @@ self.addEventListener("fetch", (event) => {
         .then((resp) => {
           if (resp.ok && resp.type === "basic") {
             const copy = resp.clone();
-            caches.open(API).then((c) => c.put(req, copy));
+            event.waitUntil(caches.open(API).then((c) => c.put(req, copy)));
           }
           return resp;
         })
@@ -99,7 +99,7 @@ self.addEventListener("fetch", (event) => {
         .then((resp) => {
           if (resp.ok && resp.type === "basic" && !resp.redirected) {
             const copy = resp.clone();
-            caches.open(SHELL).then((c) => c.put(req, copy));
+            event.waitUntil(caches.open(SHELL).then((c) => c.put(req, copy)));
           }
           return resp;
         })
@@ -117,7 +117,7 @@ self.addEventListener("fetch", (event) => {
         fetch(req).then((resp) => {
           if (resp.ok && resp.type === "basic") {
             const copy = resp.clone();
-            caches.open(SHELL).then((c) => c.put(req, copy));
+            event.waitUntil(caches.open(SHELL).then((c) => c.put(req, copy)));
           }
           return resp;
         }),

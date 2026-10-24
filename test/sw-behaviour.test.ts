@@ -242,3 +242,22 @@ describe("generated worker: fallbacks read only this worker's caches", () => {
     expect(((await w.fetch(request("/x", { mode: "navigate" }))) as FakeResponse).body).toBe("home");
   });
 });
+
+describe("generated worker: cache writes are kept alive with waitUntil", () => {
+  it("registers the put for an API response, a navigation and an asset", async () => {
+    const w = loadWorker(opts);
+    await w.fetch(request("/api/items"));
+    expect(w.lastWaits).toBe(1);
+    await w.fetch(request("/page", { mode: "navigate" }));
+    expect(w.lastWaits).toBe(1);
+    await w.fetch(request("/app.js"));
+    expect(w.lastWaits).toBe(1);
+  });
+
+  it("registers nothing when the response is not cached", async () => {
+    const w = loadWorker(opts);
+    w.setNetwork(async () => basic("", { status: 500 }));
+    await w.fetch(request("/api/items"));
+    expect(w.lastWaits).toBe(0);
+  });
+});

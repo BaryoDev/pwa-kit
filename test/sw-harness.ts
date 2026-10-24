@@ -127,6 +127,8 @@ export function loadWorker(opts: ServiceWorkerOptions) {
     URL,
   );
 
+  let lastWaits = 0;
+
   /** Dispatch an event that uses waitUntil, and wait for what it was given. */
   const lifecycle = async (type: string, extra: object = {}) => {
     const waits: Promise<unknown>[] = [];
@@ -137,6 +139,10 @@ export function loadWorker(opts: ServiceWorkerOptions) {
   return {
     caches,
     fetched,
+    /** How many waitUntil promises the last fetch event registered. */
+    get lastWaits() {
+      return lastWaits;
+    },
     state,
     handlers,
     /** Set what the network returns, or make it fail with offline(). */
@@ -159,11 +165,17 @@ export function loadWorker(opts: ServiceWorkerOptions) {
      */
     async fetch(req: FakeRequest): Promise<FakeResponse | undefined | "passthrough"> {
       let answer: Promise<FakeResponse | undefined> | undefined;
-      handlers.fetch({ request: req, respondWith: (p: Promise<FakeResponse | undefined>) => (answer = p) });
+      const waits: Promise<unknown>[] = [];
+      handlers.fetch({
+        request: req,
+        respondWith: (p: Promise<FakeResponse | undefined>) => (answer = p),
+        waitUntil: (p: Promise<unknown>) => waits.push(p),
+      });
       if (!answer) return "passthrough";
       const resp = await answer;
-      // Let the fire-and-forget caches.open().then(put) inside the worker settle.
-      await new Promise((r) => setTimeout(r, 0));
+      // The worker may only finish its cache puts through waitUntil, so wait on exactly that.
+      await Promise.all(waits);
+      lastWaits = waits.length;
       return resp;
     },
   };
