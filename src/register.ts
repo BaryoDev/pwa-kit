@@ -1,9 +1,10 @@
 export interface RegisterOptions {
-  /** Set to false to neither reload nor listen for a new worker. Default true. */
+  /** Set to false to not reload when a new worker takes over. Default true. `onUpdate` still wins. */
   reloadOnUpdate?: boolean;
   /**
-   * Called instead of reloading when a new worker takes over. Call `reload()` when it is safe
-   * (a game between runs, a form with no unsaved input). `reload` only reloads once.
+   * Called instead of reloading when a new worker takes over, even with `reloadOnUpdate: false`.
+   * Call `reload()` when it is safe (a game between runs, a form with no unsaved input). `reload`
+   * only reloads once. Reload soon: until you do, the old page runs on the new worker.
    */
   onUpdate?: (reload: () => void) => void;
   /** Minimum milliseconds between update checks on load and resume. Default 60000. */
@@ -29,8 +30,10 @@ export function registerServiceWorker(url = "/sw.js", opts: RegisterOptions = {}
 
   const cleanups: Array<() => void> = [];
 
-  if (opts.reloadOnUpdate !== false) {
-    const hadController = !!navigator.serviceWorker.controller;
+  let stopped = false;
+
+  if (opts.onUpdate || opts.reloadOnUpdate !== false) {
+    let hadController = !!navigator.serviceWorker.controller;
     let reloaded = false;
     const reload = () => {
       if (reloaded) return;
@@ -38,7 +41,11 @@ export function registerServiceWorker(url = "/sw.js", opts: RegisterOptions = {}
       if (typeof window !== "undefined") window.location.reload();
     };
     const onChange = () => {
-      if (!hadController) return; // skip the first install (no prior controller)
+      if (!hadController) {
+        // the first install claiming this page; a later deploy is a real update
+        hadController = true;
+        return;
+      }
       if (opts.onUpdate) opts.onUpdate(reload);
       else reload();
     };
@@ -50,11 +57,14 @@ export function registerServiceWorker(url = "/sw.js", opts: RegisterOptions = {}
   let registration: ServiceWorkerRegistration | undefined;
   let lastCheck = -Infinity;
   const check = () => {
-    if (!registration) return;
+    if (stopped || !registration) return;
     const now = Date.now();
-    if (now - lastCheck < interval) return;
+    // a clock that moved backwards (now < lastCheck) must not block checks
+    if (now >= lastCheck && now - lastCheck < interval) return;
     lastCheck = now;
-    Promise.resolve(registration.update()).catch(() => {});
+    Promise.resolve(registration.update()).catch(() => {
+      lastCheck = -Infinity; // let the next resume retry
+    });
   };
 
   const onVisible = () => {
@@ -69,6 +79,7 @@ export function registerServiceWorker(url = "/sw.js", opts: RegisterOptions = {}
     navigator.serviceWorker
       .register(url, { updateViaCache: "none" })
       .then((r) => {
+        if (stopped) return;
         registration = r;
         check();
       })
@@ -80,7 +91,10 @@ export function registerServiceWorker(url = "/sw.js", opts: RegisterOptions = {}
     cleanups.push(() => window.removeEventListener?.("load", reg));
   }
 
-  return () => cleanups.forEach((fn) => fn());
+  return () => {
+    stopped = true;
+    cleanups.forEach((fn) => fn());
+  };
 }
 
 /**

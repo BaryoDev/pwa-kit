@@ -9,8 +9,8 @@ function stubBrowser(hasController: boolean) {
     addEventListener(t: string, fn: () => void) {
       this.listeners[t] = fn;
     },
-    removeEventListener(t: string) {
-      delete this.listeners[t];
+    removeEventListener(t: string, fn: () => void) {
+      if (this.listeners[t] === fn) delete this.listeners[t];
     },
     register: vi.fn(async () => ({ update })),
   };
@@ -22,13 +22,17 @@ function stubBrowser(hasController: boolean) {
     addEventListener(t: string, fn: () => void) {
       this.listeners[t] = fn;
     },
-    removeEventListener(t: string) {
-      delete this.listeners[t];
+    removeEventListener(t: string, fn: () => void) {
+      if (this.listeners[t] === fn) delete this.listeners[t];
     },
   };
   vi.stubGlobal("navigator", { serviceWorker: sw });
   vi.stubGlobal("document", doc);
-  vi.stubGlobal("window", { location: { reload }, addEventListener: vi.fn() });
+  vi.stubGlobal("window", {
+    location: { reload },
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  });
   return { sw, doc, reload, update };
 }
 
@@ -147,6 +151,60 @@ describe("registerServiceWorker", () => {
     doReload();
     doReload();
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("counts a later update after the first install's controllerchange", () => {
+    const { sw } = stubBrowser(false);
+    const onUpdate = vi.fn();
+    registerServiceWorker("/sw.js", { onUpdate });
+    sw.listeners.controllerchange(); // the claim on first install
+    sw.listeners.controllerchange(); // a deploy picked up later
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("calls onUpdate even when reloadOnUpdate is false", () => {
+    const { sw, reload } = stubBrowser(true);
+    const onUpdate = vi.fn();
+    registerServiceWorker("/sw.js", { reloadOnUpdate: false, onUpdate });
+    sw.listeners.controllerchange();
+    expect(onUpdate).toHaveBeenCalledTimes(1);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it("does not update after stop when register was still pending", async () => {
+    const { sw, update } = stubBrowser(true);
+    let resolve!: (r: { update: typeof update }) => void;
+    sw.register.mockImplementationOnce(() => new Promise((res) => (resolve = res)) as never);
+    const stop = registerServiceWorker();
+    stop();
+    resolve({ update });
+    await flush();
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("allows a check when the clock moves backwards", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(2_000_000);
+    const { doc, update } = stubBrowser(true);
+    registerServiceWorker("/sw.js", { updateIntervalMs: 60_000 });
+    await flush();
+    expect(update).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(1_000_000);
+    doc.listeners.visibilitychange();
+    expect(update).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries on the next resume when update rejects", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(1_000_000);
+    const { doc, update } = stubBrowser(true);
+    update.mockRejectedValueOnce(new Error("offline"));
+    registerServiceWorker("/sw.js", { updateIntervalMs: 60_000 });
+    await flush();
+    expect(update).toHaveBeenCalledTimes(1);
+    vi.setSystemTime(1_001_000); // inside the window, but the last check failed
+    doc.listeners.visibilitychange();
+    expect(update).toHaveBeenCalledTimes(2);
   });
 
   it("removes its listeners when the returned function is called", () => {
