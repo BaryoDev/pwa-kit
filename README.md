@@ -79,6 +79,56 @@ function onLogin(session) { clearApiCache(); /* store token... */ }
 function onLogout() { clearApiCache(); /* drop token... */ }
 ```
 
+### Updates
+
+The page asks for a new version after load and whenever it becomes visible again (at most once a
+minute, set `updateIntervalMs` to change it). The worker file is registered with
+`updateViaCache: "none"`, so it is never served from the HTTP cache. An installed app resumed from
+the background picks up a deploy without being closed.
+
+By default the page reloads once when the new worker takes over. A reload loses unsaved work, so
+pass `onUpdate` to pick the moment. It receives a `reload` function that reloads once:
+
+```ts
+// a game: wait until between runs
+let pendingReload: (() => void) | null = null;
+registerServiceWorker("/sw.js", { onUpdate: (reload) => (pendingReload = reload) });
+
+function onRunEnd() {
+  pendingReload?.(); // does nothing when no update is waiting
+}
+```
+
+The browser installs a new worker only when the bytes of `sw.js` change, and the generated worker
+changes only when its `version` option does. **Set `version` to something that changes on every
+deploy** (git sha or build id), or users keep the old build:
+
+```ts
+// scripts/gen-sw.mjs
+import { execSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import { generateServiceWorker } from "@baryodev/pwa-kit";
+
+const version = process.env.BUILD_ID ?? execSync("git rev-parse --short HEAD").toString().trim();
+writeFileSync("public/sw.js", generateServiceWorker({ cachePrefix: "myapp", version }));
+```
+
+With Vite, expose the same id to app code with `define`:
+
+```ts
+// vite.config.ts
+import { defineConfig } from "vite";
+import { execSync } from "node:child_process";
+
+const version = process.env.BUILD_ID ?? execSync("git rev-parse --short HEAD").toString().trim();
+
+export default defineConfig({
+  define: { __BUILD_ID__: JSON.stringify(version) },
+});
+```
+
+`registerServiceWorker` returns a function that removes its listeners.
+
 ## 3. Install prompt (React)
 
 ```tsx
@@ -213,7 +263,7 @@ Link it and the Apple bits in your `<head>` (Next.js: use the metadata API):
 | Export | Description |
 |--------|-------------|
 | `generateServiceWorker(options)` | Returns the service-worker source as a string. |
-| `registerServiceWorker(url?)` | Registers the worker after `load`. No-op on the server. |
+| `registerServiceWorker(url?, opts?)` | Registers the worker after `load` and checks for updates on load and resume. Options: `reloadOnUpdate`, `onUpdate`, `updateIntervalMs`. Returns a stop function. No-op on the server. |
 | `clearApiCache()` | Tells the worker to drop cached API data. Call on sign-in/out. |
 | `isStandalone()` | `true` when running as an installed PWA. |
 | `lockViewportWhenStandalone()` | Disables zoom when installed (no-op in a browser tab). Returns a cleanup fn. |
