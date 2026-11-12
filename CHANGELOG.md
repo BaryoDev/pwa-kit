@@ -18,7 +18,7 @@ Publishing the Release is what ships it: `.github/workflows/publish.yml` fires o
 Release body as the notes. A `workflow_dispatch` run publishes without any of that paperwork, which
 is how 0.4.0 shipped with no tag, no Release and no announcement.
 
-## Unreleased
+## [Unreleased]
 
 ### Fixed
 
