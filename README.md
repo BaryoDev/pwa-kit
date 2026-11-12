@@ -35,7 +35,7 @@ writeFileSync(
     cachePrefix: "myapp",          // -> myapp-shell-v1 / myapp-api-v1
     apiPrefix: "/api/",            // requests treated as live data
     skipPaths: ["/api/auth/", "/api/files/"], // never cached
-    navigationFallback: "/",       // shown when offline with nothing cached
+    navigationFallback: "/",       // shown when offline and the page was not cached (needs one online visit first)
   }),
 );
 ```
@@ -48,7 +48,9 @@ writeFileSync(
 **Caching strategy**
 
 - App shell / static assets: cache-first (fast, works offline).
-- Navigations: network-first, cached page as an offline fallback.
+- Navigations: network-first, cached page as an offline fallback. Pages are kept in a separate
+  `${cachePrefix}-pages-*` cache, and the offline fallback page works only after one online visit. After `clearApiCache()` (sign-out) an
+  offline user sees the browser error page until the next online visit.
 - API `GET`s: **network-first** — online always gets fresh data; the last good response is kept
   only as an offline fallback, so lists still show like a native app with no signal.
 - Writes (`POST`/`PUT`/…) always hit the network.
@@ -57,12 +59,12 @@ writeFileSync(
 
 - Auth and file paths are never cached.
 - Only same-origin `2xx` responses are cached. A redirected navigation is not cached either.
-- Call `clearApiCache()` on sign-in and sign-out so cached data from one account is never served
-  to another on a shared device (see below).
+- Call `clearApiCache()` on sign-in and sign-out so cached API data and cached pages from one
+  account are never served to another on a shared device (see below).
 
 **Cache cleanup**
 
-On activate the worker deletes only caches named `${cachePrefix}-shell-*` or `${cachePrefix}-api-*`
+On activate the worker deletes only caches named `${cachePrefix}-shell-*`, `${cachePrefix}-pages-*` or `${cachePrefix}-api-*`
 that are not the current version. Caches from another worker, or from an older `cachePrefix`, are
 left alone and stay until you remove them once by hand. Two apps on one origin must use prefixes
 where neither starts with the other (`app` and `app-api` clash, since `app-api-shell-v1` looks like an `app` cache; `app` and `admin` do not).
@@ -363,7 +365,7 @@ part you skip.
 |--------|-------------|
 | `generateServiceWorker(options)` | Returns the service-worker source as a string. |
 | `registerServiceWorker(url?, opts?)` | Registers the worker after `load` and checks for updates on load and resume. Options: `reloadOnUpdate`, `onUpdate`, `updateIntervalMs`. Returns a stop function. No-op on the server. |
-| `clearApiCache()` | Tells the worker to drop cached API data. Call on sign-in/out. |
+| `clearApiCache()` | Tells the worker to drop cached API data and cached pages (hashed static assets stay). Call on sign-in/out. |
 | `isStandalone()` | `true` when running as an installed PWA. |
 | `lockViewportWhenStandalone()` | Disables zoom when installed (no-op in a browser tab). Returns a cleanup fn. |
 | `<InstallHint />` | Dismissible install prompt (Android button / iOS instructions). |

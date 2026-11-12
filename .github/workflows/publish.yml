@@ -23,7 +23,12 @@ jobs:
           node-version: 22
           registry-url: "https://registry.npmjs.org"
       # Trusted publishing needs npm >= 11.5.1 (newer than what Node 22 bundles).
-      - run: npm install -g npm@latest
+      - run: npm install -g npm@11
+      - name: Check release tag matches package.json
+        if: github.event_name == 'release'
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+        run: test "v$(node -p "require('./package.json').version")" = "$TAG"
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm test
@@ -46,7 +51,7 @@ jobs:
   # Announce via the org's reusable workflow (single source of truth for all repos).
   announce:
     needs: publish
-    uses: BaryoDev/.github/.github/workflows/announce.yml@main
+    uses: BaryoDev/.github/.github/workflows/announce.yml@5ee4f51851170cc1dde36f618f52d1d4fe72ba16 # main on 2026-11-12
     with:
       package: "@baryodev/pwa-kit"
       version: ${{ github.event.release.tag_name || github.ref_name }}

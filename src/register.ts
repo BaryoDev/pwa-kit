@@ -98,7 +98,7 @@ export function registerServiceWorker(url = "/sw.js", opts: RegisterOptions = {}
 }
 
 /**
- * Ask the service worker to drop its cached API data. Call this on every sign-in and sign-out so
+ * Ask the service worker to drop its cached API data and cached pages. Call this on every sign-in and sign-out so
  * one account's cached responses are never served to another on a shared device.
  */
 export function clearApiCache(): void {
@@ -139,6 +139,8 @@ export function lockViewportWhenStandalone(): () => void {
   const preventPinch = (e: TouchEvent) => {
     if (e.touches.length > 1) e.preventDefault();
   };
+  // Must be non-passive: preventDefault is how the pinch is blocked. The handler only checks the
+  // touch count, so the main-thread wait is cheap.
   document.addEventListener("touchmove", preventPinch, { passive: false });
   return () => document.removeEventListener("touchmove", preventPinch);
 }

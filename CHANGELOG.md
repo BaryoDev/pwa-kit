@@ -22,6 +22,7 @@ is how 0.4.0 shipped with no tag, no Release and no announcement.
 
 ### Fixed
 
+- `clearApiCache()` now also drops cached pages. Navigations moved to a `${cachePrefix}-pages-*` cache; static assets stay in the shell cache. The static-asset path falls back to the network when the cache cannot be opened, and `reportPwaStatus` no longer leaves an unhandled rejection when `send` rejects. Release workflow pins npm and the announce workflow, and checks the tag against `package.json`.
 - The iOS install hint no longer shows in the Google app's browser (#5). `installState()` reports `unavailable` there.
 
 ## [0.6.0] - 2026-10-24

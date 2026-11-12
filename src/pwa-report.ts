@@ -89,7 +89,7 @@ export function reportPwaStatus(
       if (status.displayMode === "browser") status.displayMode = "standalone";
     }
     try {
-      void send(status);
+      Promise.resolve(send(status)).catch(() => {});
     } catch {
       /* best-effort telemetry — never break the app */
     }
