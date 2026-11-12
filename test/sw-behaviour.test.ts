@@ -127,7 +127,7 @@ describe("generated worker: navigations only cache good responses", () => {
   it("returns a 500 to the page but does not cache it, and offline falls back", async () => {
     const w = loadWorker(opts);
     w.setNetwork(async () => basic("home"));
-    await w.fetch(request("/"));
+    await w.fetch(request("/", { mode: "navigate" }));
     w.setNetwork(async () => basic("server error", { status: 500 }));
     const resp = (await w.fetch(nav())) as FakeResponse;
     expect(resp.status).toBe(500);
