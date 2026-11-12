@@ -61,8 +61,11 @@ function isIos(): boolean {
 function isInAppWebview(): boolean {
   const ua = navigator.userAgent;
   if (WEBVIEW_UA.test(ua)) return true;
+  if (!/iphone|ipad|ipod/i.test(ua)) return false;
+  // The Google app (and Gmail links opened from it) keeps the Safari token but has no Share sheet.
+  if (/\bGSA\/\d/.test(ua)) return true;
   // An iOS web view has no "Safari" token; real iOS browsers (Safari, Chrome, Firefox) do.
-  return /iphone|ipad|ipod/i.test(ua) && !/safari/i.test(ua);
+  return !/safari/i.test(ua);
 }
 
 /**

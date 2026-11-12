@@ -18,6 +18,12 @@ Publishing the Release is what ships it: `.github/workflows/publish.yml` fires o
 Release body as the notes. A `workflow_dispatch` run publishes without any of that paperwork, which
 is how 0.4.0 shipped with no tag, no Release and no announcement.
 
+## [Unreleased]
+
+### Fixed
+
+- The iOS install hint no longer shows in the Google app's browser (#5). `installState()` reports `unavailable` there.
+
 ## [0.6.0] - 2026-10-24
 
 ### Added

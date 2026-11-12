@@ -130,6 +130,29 @@ describe("installState", () => {
   });
 });
 
+describe("installState by iOS user agent", () => {
+  const ios = (tail: string) => `Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) ${tail}`;
+  const cases: [string, string, string][] = [
+    ["Safari", IPHONE, "ios-steps"],
+    ["Chrome (CriOS)", ios("CriOS/126.0.6478.153 Mobile/15E148 Safari/604.1"), "ios-steps"],
+    ["Firefox (FxiOS)", ios("FxiOS/127.0 Mobile/15E148 Safari/605.1.15"), "ios-steps"],
+    ["Edge (EdgiOS)", ios("Version/17.0 EdgiOS/126.2592.87 Mobile/15E148 Safari/605.1.15"), "ios-steps"],
+    ["Facebook", IPHONE_FB, "unavailable"],
+    ["Instagram", ios("Mobile/21F90 Instagram 340.0.0.19.100 (iPhone14,5; iOS 17_5; en_US; en; scale=3.00; 1170x2532; 600000000)"), "unavailable"],
+    ["LinkedIn", ios("Mobile/15E148 LinkedInApp/9.30.1234"), "unavailable"],
+    ["Line", ios("Mobile/15E148 Safari Line/14.9.0"), "unavailable"],
+    ["WeChat", ios("Mobile/15E148 MicroMessenger/8.0.50(0x18003237) NetType/WIFI Language/en"), "unavailable"],
+    ["Twitter", ios("Mobile/15E148 Twitter for iPhone/10.40"), "unavailable"],
+    ["TikTok", ios("Mobile/15E148 musical_ly_34.1.0 BytedanceWebview/d8a21c6"), "unavailable"],
+    ["Google app (GSA)", ios("Version/17.5 Mobile/15E148 Safari/604.1 GSA/320.0.644063054"), "unavailable"],
+    ["generic WKWebView", IPHONE_WEBVIEW, "unavailable"],
+  ];
+  it.each(cases)("%s", async (_name, ua, expected) => {
+    stubBrowser({ ua });
+    expect((await load()).installState()).toBe(expected);
+  });
+});
+
 describe("promptInstall", () => {
   it("resolves accepted", async () => {
     const { fire } = stubBrowser({ ua: ANDROID });
