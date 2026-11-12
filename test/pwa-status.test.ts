@@ -78,6 +78,28 @@ describe("pwaStatus", () => {
 });
 
 describe("reportPwaStatus", () => {
+  it("does not leave an unhandled rejection when send rejects", async () => {
+    stubBrowser();
+    const seen: unknown[] = [];
+    const onRej = (e: unknown) => void seen.push(e);
+    process.on("unhandledRejection", onRej);
+    reportPwaStatus(async () => {
+      throw new Error("api 500");
+    });
+    await new Promise((r) => setTimeout(r, 10));
+    process.off("unhandledRejection", onRej);
+    expect(seen).toEqual([]);
+  });
+
+  it("does not throw when send throws synchronously", () => {
+    stubBrowser();
+    expect(() =>
+      reportPwaStatus(() => {
+        throw new Error("boom");
+      }),
+    ).not.toThrow();
+  });
+
   it("sends once on launch and again on appinstalled", () => {
     const { listeners } = stubBrowser();
     const send = vi.fn();

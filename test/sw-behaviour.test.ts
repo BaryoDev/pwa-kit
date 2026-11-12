@@ -169,11 +169,34 @@ describe("generated worker: messages", () => {
     expect(await w.caches.keys()).toEqual(["app-shell-v1"]);
   });
 
+  it("clear-api-cache also drops cached navigations but keeps hashed assets", async () => {
+    const w = loadWorker(opts);
+    w.setNetwork(async () => basic("alice account"));
+    await w.fetch(request("/account", { mode: "navigate" }));
+    await w.fetch(request("/app.js"));
+    await w.message("clear-api-cache");
+    w.offline();
+    expect(await w.fetch(request("/account", { mode: "navigate" }))).toBeUndefined();
+    expect(((await w.fetch(request("/app.js"))) as FakeResponse).body).toBe("alice account");
+  });
+
   it("ignores other messages", async () => {
     const w = loadWorker(opts);
     await w.fetch(request("/api/items"));
     await w.message("something-else");
     expect(await w.caches.keys()).toEqual(["app-api-v1"]);
+  });
+});
+
+describe("generated worker: asset cache errors", () => {
+  it("falls back to the network when the cache cannot be opened", async () => {
+    const w = loadWorker(opts);
+    w.caches.open = async () => {
+      throw new Error("backing store");
+    };
+    w.setNetwork(async () => basic("from network"));
+    const resp = (await w.fetch(request("/app.js"))) as FakeResponse;
+    expect(resp.body).toBe("from network");
   });
 });
 
