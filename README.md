@@ -49,7 +49,8 @@ writeFileSync(
 
 - App shell / static assets: cache-first (fast, works offline).
 - Navigations: network-first, cached page as an offline fallback. Pages are kept in a separate
-  `${cachePrefix}-pages-*` cache, and the offline fallback page works only after one online visit.
+  `${cachePrefix}-pages-*` cache, and the offline fallback page works only after one online visit. After `clearApiCache()` (sign-out) an
+  offline user sees the browser error page until the next online visit.
 - API `GET`s: **network-first** — online always gets fresh data; the last good response is kept
   only as an offline fallback, so lists still show like a native app with no signal.
 - Writes (`POST`/`PUT`/…) always hit the network.

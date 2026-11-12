@@ -19,7 +19,13 @@ export class FakeResponse {
     this.status = init.status ?? 200;
     this.type = init.type ?? "default";
     this.redirected = init.redirected ?? false;
-    this.headers = init.headers ?? {};
+    this.headers = { ...init.headers };
+    // Like Headers.get: case-insensitive, and not an enumerable key.
+    Object.defineProperty(this.headers, "get", {
+      enumerable: false,
+      value: (name: string) =>
+        Object.entries(init.headers ?? {}).find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1] ?? null,
+    });
   }
   get ok() {
     return this.status >= 200 && this.status < 300;
@@ -67,6 +73,12 @@ class FakeCache {
     if (resp.bodyUsed) throw new TypeError("Response body is already used");
     resp.bodyUsed = true;
     this.entries.set(keyOf(req), new FakeResponse(resp.body, resp));
+  }
+  async keys() {
+    return [...this.entries.keys()].map((url) => ({ url, method: "GET", mode: "cors" }));
+  }
+  async delete(req: FakeRequest | string) {
+    return this.entries.delete(keyOf(req));
   }
   async match(req: FakeRequest | string) {
     const hit = this.entries.get(keyOf(req));

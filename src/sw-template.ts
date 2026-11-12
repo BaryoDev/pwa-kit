@@ -127,6 +127,20 @@ const API_PREFIX = ${JSON.stringify(apiPrefix)};
 const SKIP = ${skips};
 const NAV_FALLBACK = ${JSON.stringify(navigationFallback)};
 
+// Drops HTML left in the shell cache, e.g. navigations cached there by an older release.
+const dropShellHtml = () =>
+  caches.open(SHELL).then((c) =>
+    c.keys().then((reqs) =>
+      Promise.all(
+        reqs.map((r) =>
+          c.match(r).then((resp) => {
+            if (resp && /text\\/html/i.test(resp.headers.get("content-type") || "")) return c.delete(r);
+          }),
+        ),
+      ),
+    ),
+  ).catch(() => {});
+
 self.addEventListener("install", () => self.skipWaiting());
 
 self.addEventListener("activate", (event) => {
@@ -134,12 +148,13 @@ self.addEventListener("activate", (event) => {
     caches
       .keys()
       .then((keys) => Promise.all(keys.filter((k) => OWN.some((p) => k.startsWith(p)) && k !== SHELL && k !== PAGES && k !== API).map((k) => caches.delete(k))))
+      .then(() => dropShellHtml())
       .then(() => self.clients.claim()),
   );
 });
 
 self.addEventListener("message", (event) => {
-  if (event.data === "clear-api-cache") event.waitUntil(Promise.all([caches.delete(API), caches.delete(PAGES)]));
+  if (event.data === "clear-api-cache") event.waitUntil(Promise.all([caches.delete(API), caches.delete(PAGES), dropShellHtml()]));
 });
 
 self.addEventListener("fetch", (event) => {
@@ -156,7 +171,7 @@ self.addEventListener("fetch", (event) => {
         .then((resp) => {
           if (resp.ok && resp.type === "basic") {
             const copy = resp.clone();
-            event.waitUntil(caches.open(API).then((c) => c.put(req, copy)));
+            event.waitUntil(caches.open(API).then((c) => c.put(req, copy)).catch(() => {}));
           }
           return resp;
         })
@@ -180,15 +195,14 @@ self.addEventListener("fetch", (event) => {
         .then((resp) => {
           if (resp.ok && resp.type === "basic" && !resp.redirected) {
             const copy = resp.clone();
-            event.waitUntil(caches.open(PAGES).then((c) => c.put(req, copy)));
+            event.waitUntil(caches.open(PAGES).then((c) => c.put(req, copy)).catch(() => {}));
           }
           return resp;
         })
         .catch(() =>
           caches
             .open(PAGES)
-            .then((c) => c.match(req).then((r) => r || c.match(NAV_FALLBACK)))
-            .then((r) => r || caches.open(SHELL).then((c) => c.match(NAV_FALLBACK))),
+            .then((c) => c.match(req).then((r) => r || c.match(NAV_FALLBACK))),
         ),
     );
     return;
@@ -205,7 +219,7 @@ self.addEventListener("fetch", (event) => {
           fetch(req).then((resp) => {
             if (resp.ok && resp.type === "basic") {
               const copy = resp.clone();
-              event.waitUntil(caches.open(SHELL).then((c) => c.put(req, copy)));
+              event.waitUntil(caches.open(SHELL).then((c) => c.put(req, copy)).catch(() => {}));
             }
             return resp;
           }),

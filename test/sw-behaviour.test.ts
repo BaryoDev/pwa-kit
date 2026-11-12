@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { basic, FakeResponse, loadWorker, request } from "./sw-harness";
+import { basic, FakeResponse, loadWorker, ORIGIN, request } from "./sw-harness";
 
 const opts = { cachePrefix: "app", version: "v1" };
 
@@ -115,7 +115,7 @@ describe("generated worker: navigations", () => {
   it("falls back to the navigation fallback page offline", async () => {
     const w = loadWorker({ ...opts, navigationFallback: "/offline.html" });
     w.setNetwork(async () => basic("offline page"));
-    await w.fetch(request("/offline.html"));
+    await w.fetch(request("/offline.html", { mode: "navigate" }));
     w.offline();
     expect(((await w.fetch(nav("/never-seen"))) as FakeResponse).body).toBe("offline page");
   });
@@ -188,6 +188,31 @@ describe("generated worker: messages", () => {
   });
 });
 
+describe("generated worker: HTML left in the shell cache by an older worker", () => {
+  const html = { headers: { "Content-Type": "text/html; charset=utf-8" } };
+  const seed = async (w: ReturnType<typeof loadWorker>) => {
+    const shell = await w.caches.open("app-shell-v1");
+    await shell.put(request("/"), basic("alice home", html));
+    await shell.put(request("/app.js"), basic("js", { headers: { "Content-Type": "text/javascript" } }));
+    return shell;
+  };
+
+  it("is removed on activate and assets are kept", async () => {
+    const w = loadWorker(opts);
+    const shell = await seed(w);
+    await w.activate();
+    expect([...shell.entries.keys()]).toEqual([ORIGIN + "/app.js"]);
+  });
+
+  it("is never served after clear-api-cache", async () => {
+    const w = loadWorker(opts);
+    await seed(w);
+    await w.message("clear-api-cache");
+    w.offline();
+    expect(await w.fetch(request("/", { mode: "navigate" }))).toBeUndefined();
+  });
+});
+
 describe("generated worker: asset cache errors", () => {
   it("falls back to the network when the cache cannot be opened", async () => {
     const w = loadWorker(opts);
@@ -257,10 +282,10 @@ describe("generated worker: fallbacks read only this worker's caches", () => {
     expect(((await w.fetch(request("/app.js"))) as FakeResponse).body).toBe("mine");
   });
 
-  it("still serves the fallback page from its own shell cache", async () => {
+  it("still serves the fallback page from its own pages cache", async () => {
     const w = loadWorker(opts);
     w.setNetwork(async () => basic("home"));
-    await w.fetch(request("/"));
+    await w.fetch(request("/", { mode: "navigate" }));
     w.offline();
     expect(((await w.fetch(request("/x", { mode: "navigate" }))) as FakeResponse).body).toBe("home");
   });
