@@ -11,6 +11,7 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: npm-release
     permissions:
       contents: read
       id-token: write # OIDC for npm trusted publishing + provenance
